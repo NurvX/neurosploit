@@ -94,3 +94,5 @@ reports/*.pdf
 
 # Rust build artifacts (v3.4.0)
 neurosploit-rs/target/
+reports/*.html
+reports/report_rs.html
