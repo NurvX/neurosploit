@@ -1,0 +1,102 @@
+<html>
+    <head>
+        <title>A potentially dangerous Request.Form value was detected from the client (tbUsername=&quot;&quot;&gt;&lt;h1&gt;HTML_INJECTED_HE...&quot;).</title>
+        <style>
+         body {font-family:"Verdana";font-weight:normal;font-size: .7em;color:black;} 
+         p {font-family:"Verdana";font-weight:normal;color:black;margin-top: -5px}
+         b {font-family:"Verdana";font-weight:bold;color:black;margin-top: -5px}
+         H1 { font-family:"Verdana";font-weight:normal;font-size:18pt;color:red }
+         H2 { font-family:"Verdana";font-weight:normal;font-size:14pt;color:maroon }
+         pre {font-family:"Lucida Console";font-size: .9em}
+         .marker {font-weight: bold; color: black;text-decoration: none;}
+         .version {color: gray;}
+         .error {margin-bottom: 10px;}
+         .expandable { text-decoration:underline; font-weight:bold; color:navy; cursor:hand; }
+        </style>
+    </head>
+
+    <body bgcolor="white">
+
+            <span><H1>Server Error in '/' Application.<hr width=100% size=1 color=silver></H1>
+
+            <h2> <i>A potentially dangerous Request.Form value was detected from the client (tbUsername=&quot;&quot;&gt;&lt;h1&gt;HTML_INJECTED_HE...&quot;).</i> </h2></span>
+
+            <font face="Arial, Helvetica, Geneva, SunSans-Regular, sans-serif ">
+
+            <b> Description: </b>Request Validation has detected a potentially dangerous client input value, and processing of the request has been aborted.  This value may indicate an attempt to compromise the security of your application, such as a cross-site scripting attack.  You can disable request validation by setting validateRequest=false in the Page directive or in the <pages> configuration section.  However, it is strongly recommended that your application explicitly check all inputs in this case.
+            <br><br>
+
+            <b> Exception Details: </b>System.Web.HttpRequestValidationException: A potentially dangerous Request.Form value was detected from the client (tbUsername=&quot;&quot;&gt;&lt;h1&gt;HTML_INJECTED_HE...&quot;).<br><br>
+
+            <b>Source Error:</b> <br><br>
+
+            <table width=100% bgcolor="#ffffcc">
+               <tr>
+                  <td>
+                      <code><pre>
+
+[No relevant source lines]</pre></code>
+
+                  </td>
+               </tr>
+            </table>
+
+            <br>
+
+            <b> Source File: </b> c:\Windows\Microsoft.NET\Framework64\v2.0.50727\Temporary ASP.NET Files\root\e6eb278b\4a52d72d\App_Web_pebpzm2g.1.cs<b> &nbsp;&nbsp; Line: </b> 0
+            <br><br>
+
+            <b>Stack Trace:</b> <br><br>
+
+            <table width=100% bgcolor="#ffffcc">
+               <tr>
+                  <td>
+                      <code><pre>
+
+[HttpRequestValidationException (0x80004005): A potentially dangerous Request.Form value was detected from the client (tbUsername=&quot;&quot;&gt;&lt;h1&gt;HTML_INJECTED_HE...&quot;).]
+   System.Web.HttpRequest.ValidateString(String s, String valueName, String collectionName) +11208427
+   System.Web.HttpRequest.ValidateNameValueCollection(NameValueCollection nvc, String collectionName) +71
+   System.Web.HttpRequest.get_Form() +178
+   System.Web.HttpRequest.get_HasForm() +11208663
+   System.Web.UI.Page.GetCollectionBasedOnMethod(Boolean dontReturnNull) +124
+   System.Web.UI.Page.DeterminePostBackMode() +83
+   System.Web.UI.Page.ProcessRequestMain(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint) +11174087
+   System.Web.UI.Page.ProcessRequest(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint) +11173626
+   System.Web.UI.Page.ProcessRequest() +91
+   System.Web.UI.Page.ProcessRequest(HttpContext context) +240
+   ASP.login_aspx.ProcessRequest(HttpContext context) in c:\Windows\Microsoft.NET\Framework64\v2.0.50727\Temporary ASP.NET Files\root\e6eb278b\4a52d72d\App_Web_pebpzm2g.1.cs:0
+   System.Web.CallHandlerExecutionStep.System.Web.HttpApplication.IExecutionStep.Execute() +599
+   System.Web.HttpApplication.ExecuteStep(IExecutionStep step, Boolean&amp; completedSynchronously) +171
+</pre></code>
+
+                  </td>
+               </tr>
+            </table>
+
+            <br>
+
+            <hr width=100% size=1 color=silver>
+
+            <b>Version Information:</b>&nbsp;Microsoft .NET Framework Version:2.0.50727.8974; ASP.NET Version:2.0.50727.8974
+
+            </font>
+
+    </body>
+</html>
+<!-- 
+[HttpRequestValidationException]: A potentially dangerous Request.Form value was detected from the client (tbUsername=&quot;&quot;&gt;&lt;h1&gt;HTML_INJECTED_HE...&quot;).
+   at System.Web.HttpRequest.ValidateString(String s, String valueName, String collectionName)
+   at System.Web.HttpRequest.ValidateNameValueCollection(NameValueCollection nvc, String collectionName)
+   at System.Web.HttpRequest.get_Form()
+   at System.Web.HttpRequest.get_HasForm()
+   at System.Web.UI.Page.GetCollectionBasedOnMethod(Boolean dontReturnNull)
+   at System.Web.UI.Page.DeterminePostBackMode()
+   at System.Web.UI.Page.ProcessRequestMain(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint)
+   at System.Web.UI.Page.ProcessRequest(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint)
+   at System.Web.UI.Page.ProcessRequest()
+   at System.Web.UI.Page.ProcessRequest(HttpContext context)
+   at ASP.login_aspx.ProcessRequest(HttpContext context) in c:\Windows\Microsoft.NET\Framework64\v2.0.50727\Temporary ASP.NET Files\root\e6eb278b\4a52d72d\App_Web_pebpzm2g.1.cs:line 0
+   at System.Web.HttpApplication.CallHandlerExecutionStep.System.Web.HttpApplication.IExecutionStep.Execute()
+   at System.Web.HttpApplication.ExecuteStep(IExecutionStep step, Boolean& completedSynchronously)
+--><!-- 
+This error page might contain sensitive information because ASP.NET is configured to show verbose error messages using &lt;customErrors mode="Off"/&gt;. Consider using &lt;customErrors mode="On"/&gt; or &lt;customErrors mode="RemoteOnly"/&gt; in production environments.-->

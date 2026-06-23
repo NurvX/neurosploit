@@ -1,0 +1,122 @@
+<html>
+    <head>
+        <title>Validation of viewstate MAC failed. If this application is hosted by a Web Farm or cluster, ensure that &lt;machineKey&gt; configuration specifies the same validationKey and validation algorithm. AutoGenerate cannot be used in a cluster.<br><br>http://go.microsoft.com/fwlink/?LinkID=314055</title>
+        <style>
+         body {font-family:"Verdana";font-weight:normal;font-size: .7em;color:black;} 
+         p {font-family:"Verdana";font-weight:normal;color:black;margin-top: -5px}
+         b {font-family:"Verdana";font-weight:bold;color:black;margin-top: -5px}
+         H1 { font-family:"Verdana";font-weight:normal;font-size:18pt;color:red }
+         H2 { font-family:"Verdana";font-weight:normal;font-size:14pt;color:maroon }
+         pre {font-family:"Lucida Console";font-size: .9em}
+         .marker {font-weight: bold; color: black;text-decoration: none;}
+         .version {color: gray;}
+         .error {margin-bottom: 10px;}
+         .expandable { text-decoration:underline; font-weight:bold; color:navy; cursor:hand; }
+        </style>
+    </head>
+
+    <body bgcolor="white">
+
+            <span><H1>Server Error in '/' Application.<hr width=100% size=1 color=silver></H1>
+
+            <h2> <i>Validation of viewstate MAC failed. If this application is hosted by a Web Farm or cluster, ensure that &lt;machineKey&gt; configuration specifies the same validationKey and validation algorithm. AutoGenerate cannot be used in a cluster.<br><br>http://go.microsoft.com/fwlink/?LinkID=314055</i> </h2></span>
+
+            <font face="Arial, Helvetica, Geneva, SunSans-Regular, sans-serif ">
+
+            <b> Description: </b>An unhandled exception occurred during the execution of the current web request. Please review the stack trace for more information about the error and where it originated in the code.
+
+            <br><br>
+
+            <b> Exception Details: </b>System.Web.HttpException: Validation of viewstate MAC failed. If this application is hosted by a Web Farm or cluster, ensure that &lt;machineKey&gt; configuration specifies the same validationKey and validation algorithm. AutoGenerate cannot be used in a cluster.<br><br>http://go.microsoft.com/fwlink/?LinkID=314055<br><br>
+
+            <b>Source Error:</b> <br><br>
+
+            <table width=100% bgcolor="#ffffcc">
+               <tr>
+                  <td>
+                      <code><pre>
+
+[No relevant source lines]</pre></code>
+
+                  </td>
+               </tr>
+            </table>
+
+            <br>
+
+            <b> Source File: </b> c:\Windows\Microsoft.NET\Framework64\v2.0.50727\Temporary ASP.NET Files\root\e6eb278b\4a52d72d\App_Web_pebpzm2g.0.cs<b> &nbsp;&nbsp; Line: </b> 0
+            <br><br>
+
+            <b>Stack Trace:</b> <br><br>
+
+            <table width=100% bgcolor="#ffffcc">
+               <tr>
+                  <td>
+                      <code><pre>
+
+[ViewStateException: Invalid viewstate. 
+	Client IP: 177.62.32.16
+	Port: 56298
+	User-Agent: Mozilla/5.0
+	ViewState: /wEPDwUKLTg2MjcwMzE2Mg9kFgICAQ9kFgICAQ9kFgQCAQ8WBB4EaHJlZgUKbG9naW4uYXNweB4JaW5uZXJodG1sBQVsb2dpbmQCAw8WBB8AZB4HVmlzaWJsZWhkAgMPFgIfAQVJcG9zdGVkIGJ5IDxzdHJvbmc+YWRtaW4gICAgICAgICAgICAgICAgICAgIDwvc3Ryb25nPjUvMTYvMjAxOSAxMjozMjozMCBQTWQCBQ8WBB8BBT5BY3VuZXRpeCBWdWxuZXJhYmlsaXR5IFNjYW5uZXIgTm93IFdpdGggTmV0d29yayBTZWN1cml0eSBTY2Fucx8ABRJSZWFkTmV3cy5hc3B4P2lkPTBkAgcPFgIfAQVEU2VhbWxlc3MgT3BlblZBUyBpbnRlZ3JhdGlvbiBub3cgYWxzbyBhdmFpbGFibGUgb24gV2luZG93cyBhbmQgTGludXhkAgkPZBYCAgEPZBYGZg9kFgJmDxYCHwEFJTxJTUcgc3JjPSJpbWFnZXMvY29tbWVudC1iZWZvcmUuZ2lmIj5kAgEPZBYCZg8WAh4FY2xhc3MFB0NvbW1lbnRkAgIPZBYCZg8WAh8BBSQ8SU1HIHNyYz0iaW1hZ2VzL2NvbW1lbnQtYWZ0ZXIuZ2lmIj5kZLtjZhxvUS4ci8HIFlqscBeWoXbu
+	Referer: 
+	Path: /Comments.aspx]
+
+[HttpException (0x80004005): Validation of viewstate MAC failed. If this application is hosted by a Web Farm or cluster, ensure that &lt;machineKey&gt; configuration specifies the same validationKey and validation algorithm. AutoGenerate cannot be used in a cluster.
+
+http://go.microsoft.com/fwlink/?LinkID=314055]
+   System.Web.UI.ViewStateException.ThrowError(Exception inner, String persistedState, String errorPageMessage, Boolean macValidationError) +190
+   System.Web.UI.ObjectStateFormatter.Deserialize(String inputString) +11093249
+   System.Web.UI.Util.DeserializeWithAssert(IStateFormatter formatter, String serializedState) +59
+   System.Web.UI.HiddenFieldPageStatePersister.Load() +11093352
+   System.Web.UI.Page.LoadPageStateFromPersistenceMedium() +11178689
+   System.Web.UI.Page.LoadAllState() +46
+   System.Web.UI.Page.ProcessRequestMain(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint) +11174087
+   System.Web.UI.Page.ProcessRequest(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint) +11173626
+   System.Web.UI.Page.ProcessRequest() +91
+   System.Web.UI.Page.ProcessRequest(HttpContext context) +240
+   ASP.comments_aspx.ProcessRequest(HttpContext context) in c:\Windows\Microsoft.NET\Framework64\v2.0.50727\Temporary ASP.NET Files\root\e6eb278b\4a52d72d\App_Web_pebpzm2g.0.cs:0
+   System.Web.CallHandlerExecutionStep.System.Web.HttpApplication.IExecutionStep.Execute() +599
+   System.Web.HttpApplication.ExecuteStep(IExecutionStep step, Boolean&amp; completedSynchronously) +171
+</pre></code>
+
+                  </td>
+               </tr>
+            </table>
+
+            <br>
+
+            <hr width=100% size=1 color=silver>
+
+            <b>Version Information:</b>&nbsp;Microsoft .NET Framework Version:2.0.50727.8974; ASP.NET Version:2.0.50727.8974
+
+            </font>
+
+    </body>
+</html>
+<!-- 
+[ViewStateException]: Invalid viewstate. 
+	Client IP: 177.62.32.16
+	Port: 56298
+	User-Agent: Mozilla/5.0
+	ViewState: /wEPDwUKLTg2MjcwMzE2Mg9kFgICAQ9kFgICAQ9kFgQCAQ8WBB4EaHJlZgUKbG9naW4uYXNweB4JaW5uZXJodG1sBQVsb2dpbmQCAw8WBB8AZB4HVmlzaWJsZWhkAgMPFgIfAQVJcG9zdGVkIGJ5IDxzdHJvbmc+YWRtaW4gICAgICAgICAgICAgICAgICAgIDwvc3Ryb25nPjUvMTYvMjAxOSAxMjozMjozMCBQTWQCBQ8WBB8BBT5BY3VuZXRpeCBWdWxuZXJhYmlsaXR5IFNjYW5uZXIgTm93IFdpdGggTmV0d29yayBTZWN1cml0eSBTY2Fucx8ABRJSZWFkTmV3cy5hc3B4P2lkPTBkAgcPFgIfAQVEU2VhbWxlc3MgT3BlblZBUyBpbnRlZ3JhdGlvbiBub3cgYWxzbyBhdmFpbGFibGUgb24gV2luZG93cyBhbmQgTGludXhkAgkPZBYCAgEPZBYGZg9kFgJmDxYCHwEFJTxJTUcgc3JjPSJpbWFnZXMvY29tbWVudC1iZWZvcmUuZ2lmIj5kAgEPZBYCZg8WAh4FY2xhc3MFB0NvbW1lbnRkAgIPZBYCZg8WAh8BBSQ8SU1HIHNyYz0iaW1hZ2VzL2NvbW1lbnQtYWZ0ZXIuZ2lmIj5kZLtjZhxvUS4ci8HIFlqscBeWoXbu
+	Referer: 
+	Path: /Comments.aspx
+[HttpException]: Validation of viewstate MAC failed. If this application is hosted by a Web Farm or cluster, ensure that &lt;machineKey&gt; configuration specifies the same validationKey and validation algorithm. AutoGenerate cannot be used in a cluster.
+
+http://go.microsoft.com/fwlink/?LinkID=314055
+   at System.Web.UI.ViewStateException.ThrowError(Exception inner, String persistedState, String errorPageMessage, Boolean macValidationError)
+   at System.Web.UI.ObjectStateFormatter.Deserialize(String inputString)
+   at System.Web.UI.Util.DeserializeWithAssert(IStateFormatter formatter, String serializedState)
+   at System.Web.UI.HiddenFieldPageStatePersister.Load()
+   at System.Web.UI.Page.LoadPageStateFromPersistenceMedium()
+   at System.Web.UI.Page.LoadAllState()
+   at System.Web.UI.Page.ProcessRequestMain(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint)
+   at System.Web.UI.Page.ProcessRequest(Boolean includeStagesBeforeAsyncPoint, Boolean includeStagesAfterAsyncPoint)
+   at System.Web.UI.Page.ProcessRequest()
+   at System.Web.UI.Page.ProcessRequest(HttpContext context)
+   at ASP.comments_aspx.ProcessRequest(HttpContext context) in c:\Windows\Microsoft.NET\Framework64\v2.0.50727\Temporary ASP.NET Files\root\e6eb278b\4a52d72d\App_Web_pebpzm2g.0.cs:line 0
+   at System.Web.HttpApplication.CallHandlerExecutionStep.System.Web.HttpApplication.IExecutionStep.Execute()
+   at System.Web.HttpApplication.ExecuteStep(IExecutionStep step, Boolean& completedSynchronously)
+--><!-- 
+This error page might contain sensitive information because ASP.NET is configured to show verbose error messages using &lt;customErrors mode="Off"/&gt;. Consider using &lt;customErrors mode="On"/&gt; or &lt;customErrors mode="RemoteOnly"/&gt; in production environments.-->

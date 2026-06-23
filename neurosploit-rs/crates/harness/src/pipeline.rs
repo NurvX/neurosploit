@@ -317,6 +317,11 @@ fn transcript_of(raw: &[(String, String, Vec<Finding>)]) -> String {
 }
 
 /// Pull a JSON array (or object) of findings out of a model's reply.
+///
+/// Models are inconsistent about field types — e.g. `confidence` may be a number
+/// (0.9), a numeric string ("0.9"), or a word ("High"); `cvss` may be a number or
+/// a string. Strict typed deserialization fails the whole batch on any mismatch,
+/// so we parse leniently into `Value` and coerce every field.
 fn extract_findings(text: &str, agent: &str) -> Vec<Finding> {
     let slice = match (text.find('['), text.rfind(']')) {
         (Some(a), Some(b)) if b > a => &text[a..=b],
@@ -325,20 +330,91 @@ fn extract_findings(text: &str, agent: &str) -> Vec<Finding> {
             _ => return vec![],
         },
     };
-    let mut out: Vec<Finding> = if let Ok(v) = serde_json::from_str::<Vec<Finding>>(slice) {
-        v
-    } else if let Ok(one) = serde_json::from_str::<Finding>(slice) {
-        vec![one]
-    } else {
-        return vec![];
+    let val: serde_json::Value = match serde_json::from_str(slice) {
+        Ok(v) => v,
+        Err(_) => return vec![],
     };
-    for f in out.iter_mut() {
-        f.agent = agent.to_string();
-        if f.id.is_empty() {
-            f.id = format!("{}-{}", agent, f.title.chars().take(12).collect::<String>());
-        }
+    let items: Vec<serde_json::Value> = match val {
+        serde_json::Value::Array(a) => a,
+        serde_json::Value::Object(_) => vec![val],
+        _ => return vec![],
+    };
+    items
+        .into_iter()
+        .filter_map(|it| {
+            let o = it.as_object()?;
+            let title = s(o, "title");
+            if title.is_empty() {
+                return None;
+            }
+            Some(Finding {
+                id: {
+                    let id = s(o, "id");
+                    if id.is_empty() {
+                        format!("{}-{}", agent, title.chars().take(12).collect::<String>())
+                    } else {
+                        id
+                    }
+                },
+                agent: agent.to_string(),
+                title,
+                severity: norm_sev(&s(o, "severity")),
+                cwe: s(o, "cwe"),
+                cvss: s(o, "cvss"),
+                endpoint: s(o, "endpoint"),
+                payload: s(o, "payload"),
+                evidence: s(o, "evidence"),
+                impact: s(o, "impact"),
+                remediation: s(o, "remediation"),
+                confidence: conf(o.get("confidence")),
+                validated: false,
+                votes: String::new(),
+            })
+        })
+        .collect()
+}
+
+/// Coerce any JSON scalar to a trimmed string.
+fn s(o: &serde_json::Map<String, serde_json::Value>, k: &str) -> String {
+    match o.get(k) {
+        Some(serde_json::Value::String(v)) => v.trim().to_string(),
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        Some(serde_json::Value::Bool(b)) => b.to_string(),
+        _ => String::new(),
     }
-    out
+}
+
+/// Accept confidence as number, numeric string, or qualitative word.
+fn conf(v: Option<&serde_json::Value>) -> f64 {
+    match v {
+        Some(serde_json::Value::Number(n)) => n.as_f64().unwrap_or(0.0),
+        Some(serde_json::Value::String(t)) => {
+            if let Ok(f) = t.trim().parse::<f64>() {
+                f
+            } else {
+                match t.to_lowercase().as_str() {
+                    s if s.contains("critical") || s.contains("very high") => 0.97,
+                    s if s.contains("high") => 0.9,
+                    s if s.contains("med") => 0.6,
+                    s if s.contains("low") => 0.3,
+                    _ => 0.0,
+                }
+            }
+        }
+        _ => 0.0,
+    }
+}
+
+fn norm_sev(s: &str) -> String {
+    match s.to_lowercase().as_str() {
+        x if x.starts_with("crit") => "Critical",
+        x if x.starts_with("high") => "High",
+        x if x.starts_with("med") => "Medium",
+        x if x.starts_with("low") => "Low",
+        "" => "Info",
+        _ => "Info",
+    }
+    .to_string()
 }
 
 /// Concatenate source files under `root` into a bounded review context.
