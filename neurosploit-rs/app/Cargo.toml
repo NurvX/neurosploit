@@ -16,3 +16,5 @@ tokio.workspace = true
 anyhow.workspace = true
 futures.workspace = true
 clap = { version = "4", features = ["derive"] }
+rustyline = "14"
+dialoguer = "0.11"

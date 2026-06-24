@@ -195,7 +195,16 @@ pub async fn run(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<Str
     let _ = tx.send(format!("{} candidate finding(s) (deduped) — validating by {}-model vote", candidates.len(), cfg.vote_n)).await;
 
     // ---- 4. Validate by N-model voting ---------------------------------
-    let findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
+    let mut findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
+
+    // ---- 5. Chain confirmed findings into deeper impact ----------------
+    let chained = chain_round(pool, &cfg.target, &recon, &operator_directives(&cfg), &findings, &tx).await;
+    if !chained.is_empty() {
+        let extra = validate(dedup_findings(chained), pool, VOTE_SYS, cfg.vote_n, &tx).await;
+        let _ = tx.send(format!("chaining added {} validated finding(s)", extra.len())).await;
+        findings.extend(extra);
+        findings = dedup_findings(findings);
+    }
     finish(cfg, lib, recon, transcript, findings, selected, &mut rl, tx).await
 }
 
@@ -386,8 +395,47 @@ pub async fn run_greybox(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Se
     let transcript = format!("{}\n{}", code_leads, transcript_of(&raw));
     let candidates = dedup_findings(raw.iter().flat_map(|(_, _, f)| f.clone()).collect());
     let _ = tx.send(format!("{} candidate finding(s) (deduped) — validating", candidates.len())).await;
-    let findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
+    let mut findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
+    let chained = chain_round(pool, &cfg.target, &recon, &operator_directives(&cfg), &findings, &tx).await;
+    if !chained.is_empty() {
+        let extra = validate(dedup_findings(chained), pool, VOTE_SYS, cfg.vote_n, &tx).await;
+        let _ = tx.send(format!("chaining added {} validated finding(s)", extra.len())).await;
+        findings.extend(extra);
+        findings = dedup_findings(findings);
+    }
     finish(cfg, lib, recon, transcript, findings, selected, &mut rl, tx).await
+}
+
+const CHAIN_SYS: &str = "You are an exploit-chaining specialist. Given already-CONFIRMED findings, chain them into deeper impact — e.g. SSRF→cloud metadata creds, SQLi→DB dump→credential reuse, IDOR→account takeover, arbitrary file read→secrets→RCE, auth bypass→admin. Use your tools to actually carry the chain forward and PROVE the escalated impact. Report ONLY NEW findings beyond the inputs.";
+
+/// One orchestration round: take the confirmed findings and try to chain them
+/// into higher-impact follow-ups, reusing the recon/auth context. Returns the
+/// (unvalidated) new candidate findings produced by chaining.
+async fn chain_round(pool: &ModelPool, target: &str, recon: &str, directives: &str,
+                     confirmed: &[Finding], tx: &Sender<String>) -> Vec<Finding> {
+    if confirmed.is_empty() {
+        return vec![];
+    }
+    let summary: String = confirmed.iter().take(20)
+        .map(|f| format!("- [{}] {} @ {} ({})", f.severity, f.title, f.endpoint, f.cwe))
+        .collect::<Vec<_>>().join("\n");
+    let _ = tx.send(format!("chaining {} confirmed finding(s) for deeper impact…", confirmed.len())).await;
+    let recon_ctx: String = recon.chars().take(2500).collect();
+    let user = format!(
+        "AUTHORIZED engagement on {target}.\n\n{directives}{react}{doctrine}\
+         CONFIRMED FINDINGS TO CHAIN:\n{summary}\n\nRecon:\n{recon_ctx}\n\n\
+         Chain these into deeper impact and PROVE it. Reply ONLY a JSON array of NEW findings \
+         (may be []): {{id,title,severity,cwe,endpoint,payload,evidence,impact,remediation,confidence}}.",
+        react = REACT_DOCTRINE, doctrine = tool_doctrine(pool.mcp_config.is_some()),
+    );
+    match pool.complete_routed(Task::Exploit, CHAIN_SYS, &user).await {
+        Ok((m, text)) => {
+            let f = extract_findings(&text, "chain");
+            let _ = tx.send(format!("chain via {} → {} new candidate(s)", m.label(), f.len())).await;
+            f
+        }
+        Err(e) => { let _ = tx.send(format!("chaining failed: {e}")).await; vec![] }
+    }
 }
 
 // --------------------------------------------------------------------------- shared
