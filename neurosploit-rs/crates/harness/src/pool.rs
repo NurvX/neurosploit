@@ -31,6 +31,9 @@ pub struct ModelPool {
     pub subscription: bool,
     /// Path to an `.mcp.json` (Playwright) used on the subscription/CLI path.
     pub mcp_config: Option<String>,
+    /// Progress channel: when set, the subscription CLI streams structured
+    /// activity (tools called, commands run, files read) here live.
+    progress: std::sync::Mutex<Option<tokio::sync::mpsc::Sender<String>>>,
 }
 
 impl ModelPool {
@@ -57,7 +60,20 @@ impl ModelPool {
             },
             subscription,
             mcp_config,
+            progress: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Attach a progress channel so the subscription CLI streams structured
+    /// activity (commands run, files read, tools called) live.
+    pub fn set_progress(&self, tx: tokio::sync::mpsc::Sender<String>) {
+        if let Ok(mut g) = self.progress.lock() {
+            *g = Some(tx);
+        }
+    }
+
+    fn progress(&self) -> Option<tokio::sync::mpsc::Sender<String>> {
+        self.progress.lock().ok().and_then(|g| g.clone())
     }
 
     /// One completion for a model, via subscription CLI (optionally with MCP) or
@@ -65,6 +81,7 @@ impl ModelPool {
     /// (rate limits, MCP cold-starts, network blips).
     async fn one(&self, m: &ModelRef, system: &str, user: &str) -> Result<String> {
         let use_cli = self.subscription && cli_binary_for(&m.provider).is_some();
+        let progress = self.progress();
         let mut last = anyhow::anyhow!("no attempt");
         for attempt in 0..3u64 {
             if attempt > 0 {
@@ -73,7 +90,7 @@ impl ModelPool {
             }
             let r = if use_cli {
                 self.client
-                    .chat_cli(&m.provider, &m.model, system, user, self.mcp_config.as_deref())
+                    .chat_cli(&m.provider, &m.model, system, user, self.mcp_config.as_deref(), progress.clone())
                     .await
             } else {
                 self.client.chat(m, system, user).await

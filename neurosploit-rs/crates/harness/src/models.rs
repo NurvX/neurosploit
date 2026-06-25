@@ -2,7 +2,7 @@ use anyhow::{anyhow, Result};
 use serde::Serialize;
 use std::process::Stdio;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
 /// A model provider exposing an OpenAI-compatible `/chat/completions` endpoint.
@@ -139,24 +139,20 @@ impl ChatClient {
         system: &str,
         user: &str,
         mcp_config: Option<&str>,
+        progress: Option<tokio::sync::mpsc::Sender<String>>,
     ) -> Result<String> {
         let bin = cli_binary_for(provider)
             .ok_or_else(|| anyhow!("no CLI/subscription backend for provider '{}'", provider))?;
         let prompt = format!("{system}\n\n{user}");
+
+        // Claude Code can stream structured events (tools, commands, files) which
+        // we surface live as a categorized activity feed.
+        if bin == "claude" {
+            return self.chat_claude_stream(model, &prompt, mcp_config, progress).await;
+        }
+
         let mut cmd = Command::new(bin);
         match bin {
-            // Claude Code headless print mode (uses the Claude subscription login).
-            // Tool autonomy is always enabled so the agent can use its built-in
-            // tools (Bash/curl/etc.) to actually probe the target — Playwright MCP
-            // is an *optional* add-on, not a requirement.
-            "claude" => {
-                cmd.arg("-p").arg("--model").arg(model).arg("--dangerously-skip-permissions");
-                // Required to allow tool autonomy when running as root.
-                cmd.env("IS_SANDBOX", "1");
-                if let Some(mcp) = mcp_config {
-                    cmd.arg("--mcp-config").arg(mcp);
-                }
-            }
             // Codex non-interactive exec (uses the ChatGPT/Codex login), prompt on stdin.
             "codex" => {
                 cmd.arg("exec").arg("--model").arg(model)
@@ -210,6 +206,114 @@ impl ChatClient {
             return Err(anyhow!("{} subscription CLI returned empty output", bin));
         }
         Ok(stdout)
+    }
+
+    /// Drive Claude Code with `--output-format stream-json` and surface its
+    /// activity as a live, categorized feed (states, tools, commands, files).
+    /// Tagged events are sent to `progress`; the final assistant text is returned.
+    async fn chat_claude_stream(
+        &self,
+        model: &str,
+        prompt: &str,
+        mcp_config: Option<&str>,
+        progress: Option<tokio::sync::mpsc::Sender<String>>,
+    ) -> Result<String> {
+        let mut cmd = Command::new("claude");
+        cmd.arg("-p").arg("--model").arg(model)
+            .arg("--output-format").arg("stream-json").arg("--verbose")
+            .arg("--dangerously-skip-permissions")
+            .env("IS_SANDBOX", "1");
+        if let Some(mcp) = mcp_config {
+            cmd.arg("--mcp-config").arg(mcp);
+        }
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
+        let mut child = cmd.spawn().map_err(|e| anyhow!("spawn claude failed: {e}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(prompt.as_bytes()).await?;
+        }
+        let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
+        let mut lines = BufReader::new(stdout).lines();
+        let emit = |s: String| {
+            if let Some(tx) = &progress {
+                let _ = tx.try_send(s);
+            }
+        };
+
+        let mut result = String::new();
+        let mut had_err = String::new();
+        let read = async {
+            while let Ok(Some(line)) = lines.next_line().await {
+                let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+                match v.get("type").and_then(|t| t.as_str()) {
+                    Some("assistant") => {
+                        if let Some(content) = v.pointer("/message/content").and_then(|c| c.as_array()) {
+                            for blk in content {
+                                match blk.get("type").and_then(|t| t.as_str()) {
+                                    Some("text") => {
+                                        if let Some(t) = blk.get("text").and_then(|x| x.as_str()) {
+                                            let t = t.trim();
+                                            if !t.is_empty() {
+                                                emit(format!("ai: {}", truncate(t, 240)));
+                                            }
+                                        }
+                                    }
+                                    Some("tool_use") => {
+                                        let name = blk.get("name").and_then(|x| x.as_str()).unwrap_or("tool");
+                                        let input = blk.get("input");
+                                        emit(tool_event(name, input));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    Some("result") => {
+                        if let Some(r) = v.get("result").and_then(|x| x.as_str()) {
+                            result = r.to_string();
+                        }
+                        if v.get("is_error").and_then(|x| x.as_bool()).unwrap_or(false) {
+                            had_err = v.get("result").and_then(|x| x.as_str()).unwrap_or("error").to_string();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        };
+        // Bound the whole streamed turn.
+        if tokio::time::timeout(Duration::from_secs(900), read).await.is_err() {
+            return Err(anyhow!("claude stream timed out after 900s"));
+        }
+        let _ = child.wait().await;
+        if !had_err.is_empty() && result.is_empty() {
+            return Err(anyhow!("claude: {}", truncate(&had_err, 240)));
+        }
+        if result.is_empty() {
+            return Err(anyhow!("claude stream produced no result"));
+        }
+        Ok(result)
+    }
+}
+
+/// Categorise a Claude tool_use block into a tagged activity-feed event.
+fn tool_event(name: &str, input: Option<&serde_json::Value>) -> String {
+    let s = |k: &str| input.and_then(|i| i.get(k)).and_then(|x| x.as_str()).unwrap_or("");
+    match name {
+        "Bash" => {
+            let c = s("command");
+            let danger = c.contains("rm -rf") || c.contains("mkfs") || c.contains(":(){")
+                || c.contains("dd if=") || c.contains("> /dev/");
+            format!("{}: {}", if danger { "danger" } else { "exec" }, truncate(c, 200))
+        }
+        "Read" => format!("read: {}", s("file_path")),
+        "Write" | "Edit" => format!("edit: {}", s("file_path")),
+        "Grep" => format!("tool: grep {}", truncate(s("pattern"), 80)),
+        "Glob" => format!("tool: glob {}", truncate(s("pattern"), 80)),
+        "WebFetch" => format!("net: fetch {}", s("url")),
+        n if n.contains("playwright") || n.contains("browser") => {
+            let url = s("url");
+            format!("net: browser {}{}", n.rsplit('_').next().unwrap_or(n), if url.is_empty() { String::new() } else { format!(" {url}") })
+        }
+        other => format!("tool: {other}"),
     }
 }
 

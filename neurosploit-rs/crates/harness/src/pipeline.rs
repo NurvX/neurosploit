@@ -71,6 +71,7 @@ Base every claim on an actual observed response — never assume. Stop when you'
 
 /// Black-box web engagement: recon → parallel exploit → N-model vote → report.
 pub async fn run(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<String>) -> RunOutput {
+    pool.set_progress(tx.clone());
     let _ = tx
         .send(format!(
             "Loaded {} agents ({} vuln / {} recon / {} code / {} meta) · models: {} · vote_n={} · concurrency={}{}",
@@ -210,6 +211,7 @@ pub async fn run(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<Str
 
 /// White-box engagement: analyse a repository's source for vulnerabilities.
 pub async fn run_whitebox(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<String>) -> RunOutput {
+    pool.set_progress(tx.clone());
     let _ = tx.send(format!("WHITEBOX · repo: {} · {} code agents · models: {}", cfg.target, lib.code.len(),
         pool.candidates.iter().map(|m| m.label()).collect::<Vec<_>>().join(", "))).await;
 
@@ -272,6 +274,7 @@ pub async fn run_whitebox(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: S
 /// pipeline — code-review findings become *leads* that guide live exploitation
 /// (with credentials/auth so testing is authenticated).
 pub async fn run_greybox(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<String>) -> RunOutput {
+    pool.set_progress(tx.clone());
     let repo = cfg.repo.clone().unwrap_or_default();
     let _ = tx.send(format!("GREYBOX · live: {} · repo: {} · {} code agents",
         cfg.target, repo, lib.code.len())).await;

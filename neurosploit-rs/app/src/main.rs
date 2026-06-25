@@ -323,7 +323,7 @@ async fn run_mode(base: &Path, mut cfg: RunConfig, mcp: bool, mode: Mode) -> any
     let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(256);
     let printer = tokio::spawn(async move {
         while let Some(line) = rx.recv().await {
-            println!("  [*] {line}");
+            render_line(&line);
         }
     });
     let out = match mode {
@@ -362,6 +362,89 @@ fn sanitize(s: &str) -> String {
 fn now_ts() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+// ── Activity-feed renderer ─────────────────────────────────────────────────
+// Turns the harness's tagged progress stream into a categorized feed: tool/
+// command/file events render as compact cards; everything else as a state line
+// with an icon, so it's clear what the AI is doing (no "black box").
+const RST: &str = "\x1b[0m";
+
+fn render_line(raw: &str) {
+    let line = raw.trim_end();
+    let (tag, rest) = match line.split_once(": ") {
+        Some((t, r)) if matches!(t, "exec" | "danger" | "read" | "edit" | "tool" | "net" | "ai" | "plan") => (t, r),
+        _ => ("", line),
+    };
+    match tag {
+        "exec" => card("⌘ command", rest, "\x1b[33m"),
+        "danger" => card("⚠ DANGEROUS command", rest, "\x1b[1;31m"),
+        "read" => state("📄", "reading", rest, "\x1b[34m"),
+        "edit" => state("✏️", "editing", rest, "\x1b[35m"),
+        "net" => card("🌐 request", rest, "\x1b[36m"),
+        "tool" => state("🔧", "tool", rest, "\x1b[35m"),
+        "ai" => state("💬", "", rest, "\x1b[2m"),
+        "plan" => state("🧭", "plan", rest, "\x1b[36m"),
+        _ => render_untagged(line),
+    }
+}
+
+fn render_untagged(l: &str) {
+    let low = l.to_lowercase();
+    if l.starts_with("===") {
+        println!("\n\x1b[1;35m▌ {}\x1b[0m", l.trim_matches('=').trim());
+    } else if low.contains("✓ complete") || low.contains("validated finding(s)") {
+        println!("  \x1b[1;32m✓\x1b[0m {l}");
+    } else if low.starts_with("recon") {
+        state("🔍", "reconning", l.trim_start_matches("recon").trim_start_matches(' '), "\x1b[36m");
+    } else if low.contains("selected") || low.contains("agent selection") || low.contains("heuristic") {
+        state("🧭", "planning", l, "\x1b[36m");
+    } else if low.starts_with("exploit") || low.starts_with("analyze") || low.contains("launching agent") || low.starts_with("review ") {
+        state("🧪", "testing", l, "\x1b[35m");
+    } else if low.starts_with("vote") {
+        if low.contains("confirmed") { state("✓", "validated", l, "\x1b[32m"); }
+        else { state("·", "rejected", l, "\x1b[2m"); }
+    } else if low.starts_with("chain") {
+        state("🔗", "chaining", l, "\x1b[36m");
+    } else if low.contains("report") {
+        state("📄", "report", l, "\x1b[34m");
+    } else if low.contains("fail") || low.contains("error") || low.starts_with('✗') {
+        println!("  \x1b[31m✗\x1b[0m {l}");
+    } else {
+        println!("  \x1b[2m·\x1b[0m {l}");
+    }
+}
+
+fn state(icon: &str, kind: &str, msg: &str, color: &str) {
+    let k = if kind.is_empty() { String::new() } else { format!("{color}{kind}{RST} ") };
+    println!("  {icon} {k}{}", msg.trim());
+}
+
+/// Compact card for a tool the AI ran (the "tool runner visual").
+fn card(title: &str, body: &str, color: &str) {
+    let body = body.trim();
+    let width = body.chars().count().min(72);
+    let bar = "─".repeat(width.max(title.chars().count()) + 2);
+    println!("  {color}╭─ {title} {}{RST}", "─".repeat(bar.len().saturating_sub(title.chars().count() + 3)));
+    for chunk in wrap(body, 72) {
+        println!("  {color}│{RST} {chunk}");
+    }
+    println!("  {color}╰{}{RST}", bar);
+}
+
+fn wrap(s: &str, w: usize) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for word in s.split_whitespace() {
+        if cur.chars().count() + word.chars().count() + 1 > w && !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+        if !cur.is_empty() { cur.push(' '); }
+        cur.push_str(word);
+    }
+    if !cur.is_empty() { out.push(cur); }
+    if out.is_empty() { out.push(String::new()); }
+    out
 }
 
 fn write_status(workdir: &Path, state: &str, extra: &str) {
