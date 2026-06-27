@@ -1,4 +1,4 @@
-//! NeuroSploit v3.5.2 — interactive harness + CLI (`run` / `whitebox` / `agents` / `models`).
+//! NeuroSploit v3.5.3 — interactive harness + CLI (`run` / `whitebox` / `agents` / `models`).
 
 mod repl;
 mod tui;
@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 #[command(
     name = "neurosploit",
     version,
-    about = "NeuroSploit v3.5.2 — multi-model autonomous pentest harness",
-    long_about = "NeuroSploit v3.5.2 — a Rust multi-model harness that drives a pool of LLMs \
+    about = "NeuroSploit v3.5.3 — multi-model autonomous pentest harness",
+    long_about = "NeuroSploit v3.5.3 — a Rust multi-model harness that drives a pool of LLMs \
 (API key or local subscription: Claude/Codex/Gemini/Grok) to autonomously test a target. \
 After recon it INTELLIGENTLY selects only the agents matching the discovered surface, runs \
 them in parallel, then validates every finding by cross-model voting before reporting.\n\n\
@@ -61,6 +61,9 @@ enum Cmd {
         /// Free-text focus, e.g. "injection and broken access control".
         #[arg(long)]
         focus: Option<String>,
+        /// Open a Jira card per finding (needs the jira integration enabled).
+        #[arg(long)]
+        jira: bool,
         /// Verbose: log each agent as it launches, recon, and votes.
         #[arg(short, long)]
         verbose: bool,
@@ -80,6 +83,9 @@ enum Cmd {
         offline: bool,
         #[arg(long)]
         subscription: bool,
+        /// Open a Jira card per finding (needs the jira integration enabled).
+        #[arg(long)]
+        jira: bool,
         #[arg(short, long)]
         verbose: bool,
     },
@@ -155,6 +161,52 @@ enum Cmd {
         #[arg(short, long)]
         verbose: bool,
     },
+    /// Review a GitHub Pull Request's code (clones the PR head, white-box).
+    /// Optionally comments back on the PR and/or opens Jira cards per finding.
+    Pr {
+        /// `owner/repo` or a GitHub URL.
+        repo: String,
+        /// Pull request number.
+        number: u64,
+        #[arg(long = "model")]
+        models: Vec<String>,
+        #[arg(long, default_value_t = 2)]
+        vote_n: usize,
+        #[arg(long)]
+        subscription: bool,
+        /// Post a summary comment back on the PR (needs github integration on).
+        #[arg(long)]
+        comment: bool,
+        /// Open a Jira card per finding (needs jira integration on).
+        #[arg(long)]
+        jira: bool,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Watch a GitHub repo branch; white-box review each time a new commit lands.
+    Watch {
+        /// `owner/repo` or a GitHub URL.
+        repo: String,
+        #[arg(long, default_value = "main")]
+        branch: String,
+        /// Poll interval in seconds.
+        #[arg(long, default_value_t = 300)]
+        interval: u64,
+        #[arg(long = "model")]
+        models: Vec<String>,
+        #[arg(long)]
+        subscription: bool,
+        #[arg(long)]
+        jira: bool,
+        #[arg(short, long)]
+        verbose: bool,
+    },
+    /// Manage integrations: `integrations [show|enable|disable] [github|gitlab|jira]`.
+    Integrations {
+        #[arg(default_value = "show")]
+        action: String,
+        name: Option<String>,
+    },
     /// Show agent library counts.
     Agents,
     /// List providers and models.
@@ -215,7 +267,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Cmd::Run { url, models, max_agents, vote_n, offline, subscription, mcp, creds, focus, verbose } => {
+        Cmd::Run { url, models, max_agents, vote_n, offline, subscription, mcp, creds, focus, jira, verbose } => {
             let url = if url.starts_with("http") { url } else { format!("https://{url}") };
             let mut cfg = RunConfig::new(&url);
             cfg.max_agents = max_agents;
@@ -230,8 +282,10 @@ async fn main() -> anyhow::Result<()> {
             apply_creds(&mut cfg, creds.as_deref()).await;
             let out = run_engagement(&base, cfg, mcp, false).await?;
             print_findings(&out);
+            let ig = harness::integrations::Integrations::load(&repl::proj_dir());
+            post_integrations(&ig, &url, &out, jira, false, None).await;
         }
-        Cmd::Whitebox { path, models, max_agents, vote_n, offline, subscription, verbose } => {
+        Cmd::Whitebox { path, models, max_agents, vote_n, offline, subscription, jira, verbose } => {
             let path = resolve_source(&base, &path)?; // local path OR github URL/owner/repo
             let mut cfg = RunConfig::new(&path);
             cfg.max_agents = max_agents;
@@ -244,6 +298,8 @@ async fn main() -> anyhow::Result<()> {
             }
             let out = run_engagement(&base, cfg, false, true).await?;
             print_findings(&out);
+            let ig = harness::integrations::Integrations::load(&repl::proj_dir());
+            post_integrations(&ig, &path, &out, jira, false, None).await;
         }
         Cmd::Greybox { repo, url, models, creds, focus, max_agents, vote_n, offline, subscription, mcp, verbose } => {
             let repo = resolve_source(&base, &repo)?; // local path OR github URL/owner/repo
@@ -293,6 +349,76 @@ async fn main() -> anyhow::Result<()> {
             apply_creds(&mut cfg, creds.as_deref()).await;
             let out = run_mode(&base, cfg, false, Mode::Host).await?;
             print_findings(&out);
+        }
+        Cmd::Pr { repo, number, models, vote_n, subscription, comment, jira, verbose } => {
+            let ig = harness::integrations::Integrations::load(&repl::proj_dir());
+            let owner_repo = normalize_repo(&repo);
+            let path = clone_pr(&base, &ig, &owner_repo, number)?;
+            println!("  🔍 white-box review of {owner_repo} PR #{number}");
+            let mut cfg = RunConfig::new(&path);
+            cfg.vote_n = vote_n;
+            cfg.subscription = subscription;
+            cfg.verbose = verbose;
+            cfg.instructions = Some(format!("This is the code of pull request #{number} of {owner_repo}. Focus on vulnerabilities introduced or touched by this change."));
+            if !models.is_empty() { cfg.models = models; }
+            let out = run_engagement(&base, cfg, false, true).await?;
+            print_findings(&out);
+            post_integrations(&ig, &format!("{owner_repo}#{number}"), &out, jira, comment, Some((&owner_repo, number))).await;
+        }
+        Cmd::Watch { repo, branch, interval, models, subscription, jira, verbose } => {
+            let ig = harness::integrations::Integrations::load(&repl::proj_dir());
+            let owner_repo = normalize_repo(&repo);
+            println!("  👀 watching {owner_repo}@{branch} every {interval}s — Ctrl-C to stop");
+            let mut last = String::new();
+            loop {
+                match ig.github_latest_sha(&owner_repo, &branch).await {
+                    Ok(sha) if sha != last => {
+                        let short = &sha[..7.min(sha.len())];
+                        println!("\n  🔔 {} commit {short} on {owner_repo}@{branch} — reviewing",
+                            if last.is_empty() { "current" } else { "new" });
+                        // fresh clone of the branch tip
+                        let dest = base.join("repos").join(sanitize(&format!("{owner_repo}-{branch}")));
+                        std::fs::remove_dir_all(&dest).ok();
+                        let url = ig.authed_clone_url(&format!("https://github.com/{owner_repo}"));
+                        if run_git(&["clone", "--depth", "1", "--branch", &branch, &url, &dest.display().to_string()]).is_ok() {
+                            let mut cfg = RunConfig::new(&dest.display().to_string());
+                            cfg.subscription = subscription;
+                            cfg.verbose = verbose;
+                            if !models.is_empty() { cfg.models = models.clone(); }
+                            if let Ok(out) = run_engagement(&base, cfg, false, true).await {
+                                print_findings(&out);
+                                post_integrations(&ig, &format!("{owner_repo}@{short}"), &out, jira, false, None).await;
+                            }
+                        }
+                        last = sha;
+                    }
+                    Ok(_) => {}
+                    Err(e) => eprintln!("  watch: {e}"),
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(interval.max(15))).await;
+            }
+        }
+        Cmd::Integrations { action, name } => {
+            let dir = repl::proj_dir();
+            let mut ig = harness::integrations::Integrations::load(&dir);
+            match action.as_str() {
+                "enable" | "disable" => {
+                    let on = action == "enable";
+                    match name.as_deref() {
+                        Some("github") => ig.github.enabled = on,
+                        Some("gitlab") => ig.gitlab.enabled = on,
+                        Some("jira") => ig.jira.enabled = on,
+                        _ => { eprintln!("  usage: integrations {action} <github|gitlab|jira>"); return Ok(()); }
+                    }
+                    ig.save(&dir)?;
+                    println!("  {} {}", name.unwrap_or_default(), if on { "enabled ✓" } else { "disabled" });
+                }
+                _ => {
+                    println!("  integrations · {}", dir.display());
+                    for l in ig.status_lines() { println!("    {l}"); }
+                    println!("  toggle: `neurosploit integrations enable github|gitlab|jira` · full setup in the REPL: /integrations");
+                }
+            }
         }
     }
     Ok(())
@@ -384,7 +510,7 @@ pub(crate) fn spawn_engagement(base: &Path, mut cfg: RunConfig, mcp: bool, mode:
     cfg.rl_path = Some(base.join("data").join("rl_state_rs.json").display().to_string());
     write_status(&workdir, "running", &format!("\"target\":{:?}", cfg.target));
 
-    println!("  ┌─ NeuroSploit v3.5.2  ·  by Joas A Santos & Red Team Leaders");
+    println!("  ┌─ NeuroSploit v3.5.3  ·  by Joas A Santos & Red Team Leaders");
     println!("  │  run id : {run_id}");
     println!("  │  target : {}", cfg.target);
     println!("  │  models : {}", cfg.models.join(", "));
@@ -564,9 +690,14 @@ pub(crate) fn resolve_source(base: &Path, arg: &str) -> anyhow::Result<String> {
         println!("  [*] repo cache hit → {} (delete it to re-clone)", dest.display());
         return Ok(dest.display().to_string());
     }
-    println!("  [*] cloning {url} → {}", dest.display());
+    // If a GitHub/GitLab integration is enabled, inject its token so PRIVATE
+    // repos clone without an interactive prompt (token never printed).
+    let ig = harness::integrations::Integrations::load(&repl::proj_dir());
+    let clone_url = ig.authed_clone_url(&url);
+    let private = clone_url != url;
+    println!("  [*] cloning {url}{} → {}", if private { " (private, via token)" } else { "" }, dest.display());
     let status = std::process::Command::new("git")
-        .args(["clone", "--depth", "1", &url, &dest.display().to_string()])
+        .args(["clone", "--depth", "1", &clone_url, &dest.display().to_string()])
         .status()
         .map_err(|e| anyhow::anyhow!("could not start `git clone` (is git installed?): {e}"))?;
     if !status.success() {
@@ -574,6 +705,87 @@ pub(crate) fn resolve_source(base: &Path, arg: &str) -> anyhow::Result<String> {
         anyhow::bail!("git clone failed for {url}");
     }
     Ok(dest.display().to_string())
+}
+
+/// Normalize a GitHub repo reference to `owner/name`.
+fn normalize_repo(s: &str) -> String {
+    s.trim()
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .replace("https://github.com/", "")
+        .replace("http://github.com/", "")
+        .replace("git@github.com:", "")
+}
+
+/// Run a git command, returning Ok(()) on success.
+fn run_git(args: &[&str]) -> anyhow::Result<()> {
+    let status = std::process::Command::new("git").args(args).status()
+        .map_err(|e| anyhow::anyhow!("could not run git (is it installed?): {e}"))?;
+    if !status.success() { anyhow::bail!("git {:?} failed", args.first().unwrap_or(&"")); }
+    Ok(())
+}
+
+/// Clone a repo and check out a Pull Request's HEAD (`refs/pull/N/head`).
+fn clone_pr(base: &Path, ig: &harness::integrations::Integrations, owner_repo: &str, number: u64) -> anyhow::Result<String> {
+    let dest = base.join("repos").join(sanitize(&format!("{owner_repo}-pr{number}")));
+    std::fs::create_dir_all(base.join("repos")).ok();
+    std::fs::remove_dir_all(&dest).ok(); // always fresh — PR code changes
+    let url = ig.authed_clone_url(&format!("https://github.com/{owner_repo}"));
+    let private = url.contains('@');
+    println!("  [*] cloning {owner_repo}{} + PR #{number} head → {}", if private { " (private)" } else { "" }, dest.display());
+    let d = dest.display().to_string();
+    run_git(&["clone", "--depth", "1", &url, &d])?;
+    run_git(&["-C", &d, "fetch", "--depth", "1", "origin", &format!("pull/{number}/head:pr-{number}")])?;
+    run_git(&["-C", &d, "checkout", &format!("pr-{number}")])?;
+    Ok(d)
+}
+
+/// After a run, optionally open Jira cards and/or comment on a GitHub PR.
+async fn post_integrations(
+    ig: &harness::integrations::Integrations,
+    target: &str,
+    out: &RunOutput,
+    jira: bool,
+    comment: bool,
+    gh_pr: Option<(&str, u64)>,
+) {
+    if jira && ig.jira.enabled && !out.findings.is_empty() {
+        let (keys, errs) = ig.jira_cards_for(target, &out.findings).await;
+        if !keys.is_empty() { println!("  🪪 Jira cards opened: {}", keys.join(", ")); }
+        for e in errs { eprintln!("  jira: {e}"); }
+    }
+    if comment && ig.github.enabled {
+        if let Some((repo, number)) = gh_pr {
+            match ig.github_comment(repo, number, &pr_comment_body(out)).await {
+                Ok(()) => println!("  💬 commented results on {repo}#{number}"),
+                Err(e) => eprintln!("  github comment: {e}"),
+            }
+        }
+    }
+}
+
+/// Markdown summary of a run, for a PR comment.
+fn pr_comment_body(out: &RunOutput) -> String {
+    let mut by = std::collections::BTreeMap::new();
+    for f in &out.findings { *by.entry(f.severity.as_str()).or_insert(0) += 1; }
+    let chips: Vec<String> = by.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+    let mut s = format!(
+        "### 🧠 NeuroSploit white-box review\n\n**{} validated finding(s)** — {}\n\n",
+        out.findings.len(),
+        if chips.is_empty() { "none".into() } else { chips.join(" · ") }
+    );
+    if out.findings.is_empty() {
+        s.push_str("_No vulnerabilities confirmed in the reviewed code._\n");
+    } else {
+        s.push_str("| Severity | Finding | CWE | Location |\n|---|---|---|---|\n");
+        for f in &out.findings {
+            s.push_str(&format!("| {} | {} | {} | {} |\n",
+                f.severity, f.title.replace('|', "\\|"), f.cwe,
+                f.endpoint.replace('|', "\\|")));
+        }
+        s.push_str("\n_Findings validated by multi-model voting. Authorized testing only._\n");
+    }
+    s
 }
 
 /// Blocking yes/no prompt (default yes). Used after a graceful Ctrl-C.

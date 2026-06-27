@@ -1,4 +1,4 @@
-<h1 align="center">🧠 NeuroSploit v3.5.2</h1>
+<h1 align="center">🧠 NeuroSploit v3.5.3</h1>
 
 <p align="center">
   <a href="https://github.com/JoasASantos/NeuroSploit/stargazers"><img src="https://img.shields.io/github/stars/JoasASantos/NeuroSploit?style=for-the-badge&logo=github&color=8b5cf6" alt="Stars"></a>
@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-3.5.2-blue?style=flat-square">
+  <img src="https://img.shields.io/badge/Version-3.5.3-blue?style=flat-square">
   <img src="https://img.shields.io/badge/Harness-Rust%20%7C%20tokio-e6b673?style=flat-square">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
   <img src="https://img.shields.io/badge/MD%20Agents-329-red?style=flat-square">
@@ -24,12 +24,12 @@
 >
 > 📖 **New here? Read the [full Tutorial & User Guide →](TUTORIAL.md)** — every mode, flag, config and example explained.
 
-> 🆕 **New in v3.5.2 — Exploitation Depth & Report Hygiene:** a **DEPTH doctrine**
-> makes the engine *use* what it finds (exposed → exploited), **chain** findings
-> across modules, decode/fingerprint artifacts → CVEs, and **audit tokens** (JWT
-> alg-confusion / weak HS256 secrets). A deterministic post-pass **calibrates
-> severity to proven impact** and **consolidates duplicated hygiene** findings.
-> See [RELEASE.md](RELEASE.md).
+> 🆕 **New in v3.5.3 — Integrations:** connect **GitHub / GitLab** (clone private
+> repos, review a **Pull Request's** code, **watch** a branch and re-review on
+> every commit) and **Jira** (open a vulnerability **card per finding**). Toggle
+> them with **`/integrations`** in the REPL or `neurosploit integrations`. Full
+> setup in **[TUTORIAL-INTEGRATION.md](TUTORIAL-INTEGRATION.md)**.
+> *(v3.5.2 added the DEPTH doctrine + report-hygiene pass — see [RELEASE.md](RELEASE.md).)*
 
 ---
 
@@ -146,6 +146,41 @@ neurosploit tui http://testphp.vulnweb.com/ --subscription --model anthropic:cla
 > Full step-by-step for every mode (black/white/grey/host) is in **[TUTORIAL.md](TUTORIAL.md)**.
 
 No login? Use an **API key** instead — see [Authentication](#authentication--run-via-api-key-or-subscription).
+
+---
+
+## 🔌 Integrations (GitHub · GitLab · Jira)
+
+Wire NeuroSploit into your SDLC. Toggle from the REPL (`/integrations`) or the CLI
+(`neurosploit integrations enable github|gitlab|jira`). **Tokens are never stored**
+— only the *name* of the env var is saved; the value is read from your environment.
+
+```bash
+export GITHUB_TOKEN=ghp_...                 # PAT with `repo` scope (private repos)
+neurosploit integrations enable github
+
+# Review a Pull Request's code (clones the PR head, white-box) and comment back:
+neurosploit pr digininja/DVWA 42 --subscription --model anthropic:claude-opus-4-8 --comment
+
+# Watch a branch and re-review on every new commit:
+neurosploit watch myorg/private-app --branch main --subscription --model anthropic:claude-opus-4-8
+
+# Private GitLab repo (token-injected clone) — works in whitebox/greybox:
+export GITLAB_TOKEN=glpat-... ; neurosploit integrations enable gitlab
+neurosploit whitebox https://gitlab.com/myorg/private-svc --subscription --model anthropic:claude-opus-4-8
+
+# Open a Jira card per finding (any engagement):
+export JIRA_EMAIL=you@org.com JIRA_API_TOKEN=...      # set base/project once: /integrations setup jira
+neurosploit whitebox https://github.com/myorg/app --jira --subscription --model anthropic:claude-opus-4-8
+```
+
+| Integration | What you get | Env vars |
+|-------------|--------------|----------|
+| **GitHub** | private clone · `pr` review + comment · `watch` branch | `GITHUB_TOKEN` |
+| **GitLab** | private clone for whitebox/greybox | `GITLAB_TOKEN` |
+| **Jira** | one card per finding (`--jira`) | `JIRA_EMAIL`, `JIRA_API_TOKEN` |
+
+📖 Step-by-step setup for each tool: **[TUTORIAL-INTEGRATION.md](TUTORIAL-INTEGRATION.md)**.
 
 ---
 

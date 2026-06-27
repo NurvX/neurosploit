@@ -1,4 +1,4 @@
-//! NeuroSploit v3.5.2 harness — a robust multi-model runtime for the
+//! NeuroSploit v3.5.3 harness — a robust multi-model runtime for the
 //! markdown-driven autonomous pentest engine.
 //!
 //! The harness loads the `agents_md/` library, drives a *pool* of LLM models
@@ -12,6 +12,7 @@ pub mod belief;
 pub mod creds;
 pub mod grounding;
 pub mod hygiene;
+pub mod integrations;
 pub mod pomdp;
 pub mod models;
 pub mod pipeline;

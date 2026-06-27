@@ -1,3 +1,55 @@
+# NeuroSploit v3.5.3 — Release Notes
+
+**Release Date:** June 2026
+**Codename:** Integrations (GitHub · GitLab · Jira)
+**License:** MIT
+**Credits:** Joas A Santos & Red Team Leaders
+
+---
+
+## TL;DR
+
+v3.5.3 plugs NeuroSploit into your SDLC: review **private** GitHub/GitLab repos
+and **Pull Requests**, **watch** a branch and re-review on every commit, and open
+a **Jira card per finding** — all toggleable via a new `/integrations` command.
+
+## Highlights
+
+- **GitHub integration**
+  - **Private repos**: when enabled, `whitebox` / `greybox --repo` / `tui --repo`
+    inject your `GITHUB_TOKEN` into the clone URL (token never printed/stored).
+  - **`neurosploit pr <owner/repo> <number>`** — clones the **PR head**
+    (`refs/pull/N/head`), runs a white-box review, optionally **posts a summary
+    comment** back on the PR (`--comment`) and/or **opens Jira cards** (`--jira`).
+  - **`neurosploit watch <owner/repo> --branch <b> --interval <s>`** — polls the
+    branch and runs a white-box review **each time a new commit lands**.
+- **GitLab integration** — private clone (token-injected) for `whitebox`/`greybox`
+  against `gitlab.com` or a self-hosted base.
+- **Jira integration** — `--jira` on any engagement (or `pr`/`watch`) opens **one
+  card per finding** (summary, severity, CVSS, CWE, location, PoC, evidence,
+  remediation) in your project via the Jira REST API.
+- **`/integrations` (REPL) + `neurosploit integrations` (CLI)** — `show`,
+  `enable`/`disable <github|gitlab|jira>`, and `setup <jira|gitlab|github>`
+  (interactive). Config persists to `<project>/.neurosploit/integrations.json`.
+  **Secrets are never stored** — only the env-var *name* is saved; values come
+  from the environment at use time.
+- New harness module `integrations` + app commands `pr` / `watch` /
+  `integrations`, plus a `--jira` flag on `run` / `whitebox`.
+
+## Setup
+
+Step-by-step for tokens, scopes and configuration is in
+**[TUTORIAL-INTEGRATION.md](TUTORIAL-INTEGRATION.md)** and summarized in the README.
+
+## Notes
+
+- Additive and back-compatible: all existing modes/flags are unchanged; if no
+  integration is enabled the behavior is identical to v3.5.2.
+- Tokens use env vars: `GITHUB_TOKEN`, `GITLAB_TOKEN`, `JIRA_EMAIL` +
+  `JIRA_API_TOKEN` (names configurable per integration).
+
+---
+
 # NeuroSploit v3.5.2 — Release Notes
 
 **Release Date:** June 2026

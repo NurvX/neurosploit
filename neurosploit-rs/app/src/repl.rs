@@ -1,4 +1,4 @@
-//! NeuroSploit v3.5.2 — interactive session (Claude-Code / Codex / Cursor-CLI style).
+//! NeuroSploit v3.5.3 — interactive session (Claude-Code / Codex / Cursor-CLI style).
 //!
 //! Launched when `neurosploit` runs with no subcommand. A persistent REPL with
 //! real line editing (arrow-key history recall, Ctrl-A/E/K, paste), model
@@ -120,7 +120,7 @@ const COMMANDS: &[&str] = &[
     "/help", "/show", "/config", "/providers", "/model", "/key", "/sub", "/target",
     "/repo", "/auth", "/creds", "/focus", "/attach", "/context", "/mcp", "/offline",
     "/votes", "/agents", "/theme", "/clear", "/run", "/stop", "/continue", "/runs", "/results", "/report",
-    "/status", "/diff", "/retest", "/quit",
+    "/status", "/diff", "/retest", "/integrations", "/quit",
 ];
 
 /// rustyline helper: Tab-completes `/commands` and `@filesystem-paths`,
@@ -299,7 +299,7 @@ pub async fn repl(base: &Path) -> anyhow::Result<()> {
     let backends = harness::installed_cli_backends();
     println!("\x1b[1m");
     println!("  ███╗   ██╗███████╗██╗   ██╗██████╗  ██████╗");
-    println!("  ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗   NeuroSploit v3.5.2");
+    println!("  ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗   NeuroSploit v3.5.3");
     println!("  ██╔██╗ ██║█████╗  ██║   ██║██████╔╝██║   ██║   interactive harness");
     println!("  ██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║   by Joas A Santos");
     println!("  ██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝   & Red Team Leaders");
@@ -430,6 +430,7 @@ pub async fn repl(base: &Path) -> anyhow::Result<()> {
             }
             "/mcp" => { s.mcp = !matches!(arg, "off" | "false" | "0" | "no"); println!("  Playwright MCP: {}", onoff(s.mcp)); }
             "/offline" => { s.offline = !matches!(arg, "off" | "false" | "0" | "no"); println!("  offline: {}", onoff(s.offline)); }
+            "/integrations" | "/integration" => integrations_cmd(arg),
             "/votes" => { s.vote_n = arg.parse().unwrap_or(s.vote_n); println!("  votes: {}", s.vote_n); }
             "/agents" => { s.max_agents = arg.parse().unwrap_or(s.max_agents); println!("  max agents: {}", s.max_agents); }
             "/clear" => { print!("\x1b[2J\x1b[H"); }
@@ -939,6 +940,64 @@ fn sev_rank(s: &str) -> u8 {
 }
 
 /// Read one line synchronously (for the /stop choice prompt).
+/// `/integrations` — show / enable / disable / setup GitHub, GitLab, Jira.
+fn integrations_cmd(arg: &str) {
+    let dir = proj_dir();
+    let mut ig = harness::integrations::Integrations::load(&dir);
+    let mut parts = arg.splitn(2, char::is_whitespace);
+    let sub = parts.next().unwrap_or("").trim();
+    let name = parts.next().unwrap_or("").trim();
+    match sub {
+        "" | "show" | "status" => {
+            println!("  \x1b[1mintegrations\x1b[0m · {}", dir.display());
+            for l in ig.status_lines() { println!("    {l}"); }
+            println!("  \x1b[2m/integrations enable|disable <github|gitlab|jira>  ·  /integrations setup <jira|gitlab|github>\x1b[0m");
+            println!("  \x1b[2mtokens come from env vars (never stored): GITHUB_TOKEN · GITLAB_TOKEN · JIRA_EMAIL + JIRA_API_TOKEN\x1b[0m");
+        }
+        "enable" | "disable" => {
+            let on = sub == "enable";
+            match name {
+                "github" => ig.github.enabled = on,
+                "gitlab" => ig.gitlab.enabled = on,
+                "jira" => ig.jira.enabled = on,
+                _ => { println!("  usage: /integrations {sub} <github|gitlab|jira>"); return; }
+            }
+            let _ = ig.save(&dir);
+            println!("  {name} {}", if on { "enabled ✓" } else { "disabled" });
+        }
+        "setup" => match name {
+            "jira" => {
+                let base = ask_line("  Jira base URL (https://your-org.atlassian.net):");
+                if !base.trim().is_empty() { ig.jira.base_url = base.trim().trim_end_matches('/').to_string(); }
+                let proj = ask_line("  Jira project key (e.g. SEC):");
+                if !proj.trim().is_empty() { ig.jira.project_key = proj.trim().to_string(); }
+                let it = ask_line("  Issue type [Bug]:");
+                if !it.trim().is_empty() { ig.jira.issue_type = it.trim().to_string(); }
+                ig.jira.enabled = true;
+                let _ = ig.save(&dir);
+                println!("  ✓ jira configured (project {}, {}). Now export {} and {} in your shell.",
+                    ig.jira.project_key, ig.jira.base_url, ig.jira.email_env, ig.jira.token_env);
+            }
+            "gitlab" => {
+                let b = ask_line("  GitLab base [https://gitlab.com]:");
+                if !b.trim().is_empty() { ig.gitlab.base = b.trim().trim_end_matches('/').to_string(); }
+                ig.gitlab.enabled = true;
+                let _ = ig.save(&dir);
+                println!("  ✓ gitlab enabled (base {}). Export {} (PAT with read_repository).", ig.gitlab.base, ig.gitlab.token_env);
+            }
+            "github" => {
+                let a = ask_line("  GitHub API base [https://api.github.com] (change for GHE):");
+                if !a.trim().is_empty() { ig.github.api = a.trim().trim_end_matches('/').to_string(); }
+                ig.github.enabled = true;
+                let _ = ig.save(&dir);
+                println!("  ✓ github enabled (api {}). Export {} (PAT with repo scope).", ig.github.api, ig.github.token_env);
+            }
+            _ => println!("  usage: /integrations setup <jira|gitlab|github>"),
+        },
+        _ => println!("  usage: /integrations [show | enable <name> | disable <name> | setup <name>]"),
+    }
+}
+
 fn ask_line(prompt: &str) -> String {
     use std::io::Write;
     print!("{prompt} ");
@@ -1046,6 +1105,9 @@ fn help() {
     h("/continue",          "resume a run paused on token/quota (change /model first to switch)");
     h("/runs",              "list runs · /results [n] · /report [n]");
     h("/diff /retest [n]",  "what changed vs last run · re-verify a past run");
+
+    println!("\n  \x1b[2mINTEGRATIONS\x1b[0m");
+    h("/integrations",      "show · enable/disable github|gitlab|jira · setup <name>");
 
     println!("\n  \x1b[2mOPTIONS\x1b[0m");
     h("/mcp on|off",        "Playwright MCP browser    /offline on|off  self-test");
