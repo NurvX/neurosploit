@@ -123,10 +123,19 @@ pub struct RunConfig {
     /// agents (skipping recon-based selection) — used by the category picker.
     #[serde(default)]
     pub pinned: Vec<String>,
+    /// Attack-chaining depth: how many post-exploitation pivot rounds to run
+    /// from confirmed findings (0 disables chaining). Each round expands the
+    /// newest footholds in new directions, carrying discovered loot forward.
+    #[serde(default = "default_chain_depth")]
+    pub chain_depth: usize,
 }
 
 fn default_vote() -> usize {
     3
+}
+
+fn default_chain_depth() -> usize {
+    2
 }
 fn default_concurrency() -> usize {
     8
@@ -149,6 +158,7 @@ impl RunConfig {
             auth: None,
             repo: None,
             pinned: Vec::new(),
+            chain_depth: 2,
         }
     }
 }

@@ -221,14 +221,10 @@ pub async fn run(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<Str
     // ---- 4. Validate by N-model voting ---------------------------------
     let mut findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
 
-    // ---- 5. Chain confirmed findings into deeper impact ----------------
-    let chained = chain_round(pool, &cfg.target, &recon, &operator_directives(&cfg), &findings, &lib.chains, &tx).await;
-    if !chained.is_empty() {
-        let extra = validate(dedup_findings(chained), pool, VOTE_SYS, cfg.vote_n, &tx).await;
-        let _ = tx.send(format!("chaining added {} validated finding(s)", extra.len())).await;
-        findings.extend(extra);
-        findings = dedup_findings(findings);
-    }
+    // ---- 5. Attack chaining: multi-round post-exploitation pivots ------
+    let chained = attack_chain(pool, &cfg, &recon, &findings, &lib.chains, &tx).await;
+    findings.extend(chained);
+    findings = dedup_findings(findings);
     let findings = refute_pass(findings, pool, cfg.vote_n, &tx).await;
     finish(cfg, lib, recon, transcript, findings, selected, &mut rl, tx).await
 }
@@ -427,51 +423,172 @@ pub async fn run_greybox(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Se
     let candidates = dedup_findings(raw.iter().flat_map(|(_, _, f)| f.clone()).collect());
     let _ = tx.send(format!("{} candidate finding(s) (deduped) — validating", candidates.len())).await;
     let mut findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
-    let chained = chain_round(pool, &cfg.target, &recon, &operator_directives(&cfg), &findings, &lib.chains, &tx).await;
-    if !chained.is_empty() {
-        let extra = validate(dedup_findings(chained), pool, VOTE_SYS, cfg.vote_n, &tx).await;
-        let _ = tx.send(format!("chaining added {} validated finding(s)", extra.len())).await;
-        findings.extend(extra);
-        findings = dedup_findings(findings);
-    }
+    let chained = attack_chain(pool, &cfg, &recon, &findings, &lib.chains, &tx).await;
+    findings.extend(chained);
+    findings = dedup_findings(findings);
     let findings = refute_pass(findings, pool, cfg.vote_n, &tx).await;
     finish(cfg, lib, recon, transcript, findings, selected, &mut rl, tx).await
 }
 
-const CHAIN_SYS: &str = "You are an exploit-chaining specialist. Given already-CONFIRMED findings, chain them into deeper impact — e.g. SSRF→cloud metadata creds, SQLi→DB dump→credential reuse, IDOR→account takeover, arbitrary file read→secrets→RCE, auth bypass→admin. Use your tools to actually carry the chain forward and PROVE the escalated impact. Report ONLY NEW findings beyond the inputs.";
+const CHAIN_SYS: &str = "You are a post-exploitation & attack-chaining specialist. You are given ONE confirmed foothold plus any loot already gathered. DECIDE the most promising directions to expand from THIS foothold and pursue them with real tools: post-exploitation (loot credentials/tokens/keys/config/source), credential reuse, privilege escalation (horizontal AND vertical), lateral movement to adjacent services/hosts, data exfiltration, and reaching NEW attack surface the foothold exposes (e.g. SSRF→cloud metadata creds→IAM, SQLi→DB dump→credential reuse→admin, arbitrary file read→secrets→RCE, IDOR→account takeover, auth bypass→internal APIs). PROVE each escalated step with a real tool receipt. Report ONLY NEW findings beyond the input, plus any new loot you discovered (creds, tokens, hosts, internal endpoints) so later stages can reuse it. Authorized engagement; never destructive/DoS.";
 
 /// One orchestration round: take the confirmed findings and try to chain them
 /// into higher-impact follow-ups, reusing the recon/auth context. Returns the
 /// (unvalidated) new candidate findings produced by chaining.
-async fn chain_round(pool: &ModelPool, target: &str, recon: &str, directives: &str,
-                     confirmed: &[Finding], chains: &[Agent], tx: &Sender<String>) -> Vec<Finding> {
-    if confirmed.is_empty() {
+/// Dedup / identity key for a finding (cwe|endpoint|title-prefix).
+fn finding_key(f: &Finding) -> String {
+    format!("{}|{}|{}", f.cwe.to_lowercase(), f.endpoint.to_lowercase(),
+        f.title.to_lowercase().chars().take(40).collect::<String>())
+}
+
+fn sev_rank(sev: &str) -> u8 {
+    match sev.to_lowercase().as_str() {
+        x if x.starts_with("crit") => 4,
+        x if x.starts_with("high") => 3,
+        x if x.starts_with("med") => 2,
+        x if x.starts_with("low") => 1,
+        _ => 0,
+    }
+}
+
+/// Max footholds expanded per round (keeps token cost bounded).
+const CHAIN_SEEDS_PER_ROUND: usize = 6;
+
+/// Robust attack-chaining engine (v3.5.4): iterative, decision-driven,
+/// post-exploitation pivoting. Each round takes the newest confirmed footholds,
+/// and for EACH one an agent decides which directions to expand (post-ex, cred
+/// reuse, privesc, lateral, exfil, new surface), proves new impact, and reports
+/// new findings + **loot** (creds/tokens/hosts/endpoints). Loot is carried
+/// forward so later rounds reuse it. New validated findings become the next
+/// round's footholds; the loop stops at `chain_depth` rounds or when a round
+/// yields nothing new (loop-until-dry). Findings are validated each round so we
+/// never pivot off a false positive.
+async fn attack_chain(pool: &ModelPool, cfg: &RunConfig, recon: &str,
+                      confirmed: &[Finding], chains: &[Agent], tx: &Sender<String>) -> Vec<Finding> {
+    let max_rounds = cfg.chain_depth;
+    if max_rounds == 0 || confirmed.is_empty() || pool.stop_exploiting() {
         return vec![];
     }
-    let summary: String = confirmed.iter().take(20)
-        .map(|f| format!("- [{}] {} @ {} ({})", f.severity, f.title, f.endpoint, f.cwe))
-        .collect::<Vec<_>>().join("\n");
-    // Offer the known chain recipes as a menu so the LLM applies proven multi-stage paths.
     let recipes: String = chains.iter().map(|a| format!("- {}", a.title.replace(" Agent", ""))).collect::<Vec<_>>().join("\n");
     let recipe_block = if recipes.is_empty() { String::new() } else { format!("KNOWN CHAIN RECIPES (apply any that fit):\n{recipes}\n\n") };
-    let _ = tx.send(format!("chaining {} confirmed finding(s) for deeper impact…", confirmed.len())).await;
-    let recon_ctx: String = recon.chars().take(2500).collect();
+    let recon_ctx: String = recon.chars().take(2000).collect();
+    let directives = operator_directives(cfg);
+
+    let mut all_new: Vec<Finding> = Vec::new();
+    let mut loot: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = confirmed.iter().map(finding_key).collect();
+
+    // Frontier = footholds to expand this round; start with confirmed, best-first.
+    let mut frontier: Vec<Finding> = confirmed.to_vec();
+    frontier.sort_by(|a, b| sev_rank(&b.severity).cmp(&sev_rank(&a.severity)));
+
+    for round in 1..=max_rounds {
+        if pool.stop_exploiting() || frontier.is_empty() {
+            break;
+        }
+        let seeds: Vec<Finding> = frontier.iter().take(CHAIN_SEEDS_PER_ROUND).cloned().collect();
+        let _ = tx.send(format!("⛓ attack-chain round {round}/{max_rounds} — expanding {} foothold(s), {} loot item(s)", seeds.len(), loot.len())).await;
+
+        let loot_snapshot = loot.clone();
+        let results: Vec<(Vec<Finding>, Vec<String>)> = stream::iter(seeds.into_iter())
+            .map(|seed| {
+                let (dir, rc, rb, ls, txc) = (directives.clone(), recon_ctx.clone(), recipe_block.clone(), loot_snapshot.clone(), tx.clone());
+                async move { chain_from_seed(pool, &cfg.target, &dir, &rc, &rb, &seed, &ls, round, max_rounds, &txc).await }
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
+
+        // Merge round output: accumulate loot, gather candidate findings.
+        let mut round_cands: Vec<Finding> = Vec::new();
+        for (fs, lt) in results {
+            for l in lt {
+                if !loot.iter().any(|x| x.eq_ignore_ascii_case(&l)) { loot.push(l); }
+            }
+            round_cands.extend(fs);
+        }
+        // Keep only genuinely NEW findings (unseen key).
+        let fresh: Vec<Finding> = dedup_findings(round_cands)
+            .into_iter()
+            .filter(|f| seen.insert(finding_key(f)))
+            .collect();
+        if fresh.is_empty() {
+            let _ = tx.send("⛓ no new paths this round — chain exhausted".into()).await;
+            break;
+        }
+        // Validate before pivoting further (don't chain off false positives).
+        let validated = validate(fresh, pool, VOTE_SYS, cfg.vote_n, tx).await;
+        let _ = tx.send(format!("⛓ round {round}: +{} validated finding(s), {} loot item(s) total", validated.len(), loot.len())).await;
+        if validated.is_empty() {
+            break;
+        }
+        all_new.extend(validated.clone());
+        // Next round expands the freshly-validated footholds, best-first.
+        frontier = validated;
+        frontier.sort_by(|a, b| sev_rank(&b.severity).cmp(&sev_rank(&a.severity)));
+    }
+    if !all_new.is_empty() {
+        let _ = tx.send(format!("⛓ attack-chaining added {} finding(s) across pivots", all_new.len())).await;
+    }
+    all_new
+}
+
+/// Expand ONE foothold: the agent decides directions, does post-exploitation and
+/// pivots, and returns new findings + discovered loot.
+async fn chain_from_seed(pool: &ModelPool, target: &str, directives: &str, recon_ctx: &str,
+                         recipe_block: &str, seed: &Finding, loot: &[String],
+                         round: usize, max: usize, tx: &Sender<String>) -> (Vec<Finding>, Vec<String>) {
+    if pool.stop_exploiting() {
+        return (vec![], vec![]);
+    }
+    let loot_block = if loot.is_empty() {
+        "(none yet)".to_string()
+    } else {
+        loot.iter().take(30).map(|l| format!("- {l}")).collect::<Vec<_>>().join("\n")
+    };
+    let short: String = seed.title.chars().take(28).collect();
     let user = format!(
-        "AUTHORIZED engagement on {target}.\n\n{directives}{react}{depth}{doctrine}{recipe_block}\
-         CONFIRMED FINDINGS TO CHAIN:\n{summary}\n\nRecon:\n{recon_ctx}\n\n\
-         Chain these into deeper impact (e.g. SQLi→RCE→LPE, SSRF→cloud creds, upload→LFI→RCE) and PROVE each stage. \
-         Reply ONLY a JSON array of NEW findings \
-         (may be []): {{id,title,severity,cwe,endpoint,payload,evidence,impact,remediation,confidence}}.",
+        "AUTHORIZED engagement on {target}.\n\n{directives}{react}{depth}{doctrine}\
+         FOOTHOLD TO EXPAND (round {round}/{max}):\n- [{}] {} @ {} ({})\n  payload: {}\n  evidence: {}\n\n\
+         LOOT GATHERED (reuse it):\n{loot_block}\n\n{recipe_block}RECON:\n{recon_ctx}\n\n\
+         From THIS foothold, DECIDE the best directions and PROVE new impact — post-exploitation (loot creds/keys/config/source), credential reuse, privilege escalation (horizontal & vertical), lateral movement to adjacent services/hosts, data exfiltration, and NEW attack surface it exposes. Every claim needs a real tool receipt.\n\n\
+         Reply ONLY JSON: {{\"findings\":[{{id,title,severity,cwe,endpoint,payload,evidence,impact,remediation,confidence}}],\"loot\":[\"cred:user:pass@host\",\"token:...\",\"host:10.0.0.5\",\"endpoint:/internal/api\"]}} (empty arrays are fine).",
+        seed.severity, seed.title, seed.endpoint, seed.cwe, seed.payload, seed.evidence,
         react = REACT_DOCTRINE, depth = DEPTH_DOCTRINE, doctrine = tool_doctrine(pool.mcp_config.is_some()),
     );
-    match pool.complete_routed(Task::Exploit, "chain", CHAIN_SYS, &user).await {
+    let label = format!("chain:{short}");
+    match pool.complete_routed(Task::Exploit, &label, CHAIN_SYS, &user).await {
         Ok((m, text)) => {
-            let f = extract_findings(&text, "chain");
-            let _ = tx.send(format!("chain via {} → {} new candidate(s)", m.label(), f.len())).await;
-            f
+            let (f, lt) = extract_chain(&text, "chain");
+            if !f.is_empty() || !lt.is_empty() {
+                let _ = tx.send(format!("chain[{short}] via {} → {} new finding(s), {} loot", m.label(), f.len(), lt.len())).await;
+            }
+            (f, lt)
         }
-        Err(e) => { let _ = tx.send(format!("chaining failed: {e}")).await; vec![] }
+        Err(e) => {
+            let _ = tx.send(format!("chain[{short}] failed: {e}")).await;
+            (vec![], vec![])
+        }
     }
+}
+
+/// Parse a chain agent reply into (new findings, loot). Accepts the object form
+/// `{"findings":[...],"loot":[...]}` and falls back to a bare findings array.
+fn extract_chain(text: &str, agent: &str) -> (Vec<Finding>, Vec<String>) {
+    if let (Some(a), Some(b)) = (text.find('{'), text.rfind('}')) {
+        if b > a {
+            if let Ok(serde_json::Value::Object(o)) = serde_json::from_str::<serde_json::Value>(&text[a..=b]) {
+                if o.contains_key("findings") {
+                    let findings = o.get("findings").map(|v| extract_findings(&v.to_string(), agent)).unwrap_or_default();
+                    let loot = o.get("loot").and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
+                        .unwrap_or_default();
+                    return (findings, loot);
+                }
+            }
+        }
+    }
+    (extract_findings(text, agent), vec![])
 }
 
 // --------------------------------------------------------------------------- shared
@@ -877,13 +994,7 @@ fn conf(v: Option<&serde_json::Value>) -> f64 {
 fn dedup_findings(mut v: Vec<Finding>) -> Vec<Finding> {
     v.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
     let mut seen = std::collections::HashSet::new();
-    v.into_iter()
-        .filter(|f| {
-            let key = format!("{}|{}|{}", f.cwe.to_lowercase(), f.endpoint.to_lowercase(),
-                f.title.to_lowercase().chars().take(40).collect::<String>());
-            seen.insert(key)
-        })
-        .collect()
+    v.into_iter().filter(|f| seen.insert(finding_key(f))).collect()
 }
 
 fn norm_sev(s: &str) -> String {
@@ -1026,12 +1137,9 @@ pub async fn run_host(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sende
     let candidates = dedup_findings(raw.iter().flat_map(|(_, _, f)| f.clone()).collect());
     let _ = tx.send(format!("{} candidate finding(s) (deduped) — validating", candidates.len())).await;
     let mut findings = validate(candidates, pool, VOTE_SYS, cfg.vote_n, &tx).await;
-    let chained = chain_round(pool, &cfg.target, &recon, &operator_directives(&cfg), &findings, &lib.chains, &tx).await;
-    if !chained.is_empty() {
-        let extra = validate(dedup_findings(chained), pool, VOTE_SYS, cfg.vote_n, &tx).await;
-        findings.extend(extra);
-        findings = dedup_findings(findings);
-    }
+    let chained = attack_chain(pool, &cfg, &recon, &findings, &lib.chains, &tx).await;
+    findings.extend(chained);
+    findings = dedup_findings(findings);
     let findings = refute_pass(findings, pool, cfg.vote_n, &tx).await;
     finish(cfg, lib, recon, transcript, findings, selected, &mut rl, tx).await
 }
