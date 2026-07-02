@@ -350,15 +350,20 @@ neurosploit tui http://testphp.vulnweb.com/ --subscription --model anthropic:cla
 
 ## 8. Credentials (`creds.yaml`)
 
-One file covers web auth, SSH and Windows/AD. See `neurosploit-rs/creds.example.yaml`.
+One file covers web auth, **multiple roles** (for access-control testing), SSH,
+Windows/AD and **cloud** (AWS/GCP/Azure). Mix only the blocks you need. It's a
+small YAML subset — flat `key: value` plus one-level nested blocks (2-space indent),
+`#` comments, values optionally quoted.
+
+### 8.1 Web auth (single identity)
 
 ```yaml
-# --- web auth (pick one) ---
+# --- pick one ---
 jwt: eyJhbGciOi...                 # → Authorization: Bearer <jwt>
-# header: "X-Api-Key: abc123"
-# cookie: "session=deadbeef"
+# header: "X-Api-Key: abc123"      # any raw header, sent as-is
+# cookie: "session=deadbeef"       # → Cookie: session=deadbeef
 
-# --- OR an automated login the harness performs to capture a live session ---
+# --- OR an automated login the harness performs (real HTTP) to capture a session ---
 login:
   url: http://localhost:8080/login
   method: POST
@@ -367,8 +372,40 @@ login:
   username: admin
   password: password
   success: Logout                  # text shown on a successful login
+```
 
-# --- Linux host (SSH) ---
+- `jwt`/`header`/`cookie` are used as-is.
+- A `login:` block is **executed** (real HTTP) to capture a live session
+  cookie/token; if it fails, agents are told to authenticate themselves.
+
+### 8.2 Multiple identities — access-control testing (IDOR / BOLA / BFLA / privesc)
+
+Define two or more **named roles**. With ≥2 roles the harness authenticates as
+each and tests **cross-role** access (a low-priv role reaching another user's
+object or an admin-only function = finding), proving each with the
+**authorized-vs-unauthorized** request pair. The name is free-form (`admin`,
+`user`, `victim`, `low`, …); give each role **one** credential type:
+
+```yaml
+admin:
+  jwt: eyJhbGciOi...               # Bearer token
+user:
+  apikey: abc123                   # → X-Api-Key: abc123  (or a full "Header: value")
+victim:
+  cookie: "session=deadbeef"
+tester:                            # a role can log in itself instead:
+  login: https://app.example/api/login
+  username: tester
+  password: Passw0rd!
+```
+
+Per role you may use: `jwt` · `header` (raw) · `cookie` · `apikey` · or
+`login` + `username` + `password`. The first role also becomes the default
+session for normal (non-access-control) tests.
+
+### 8.3 Linux host (SSH) & Windows/AD
+
+```yaml
 ssh:
   host: 10.0.0.5
   port: 22
@@ -376,7 +413,6 @@ ssh:
   password: s3cret                 # or:
   key: /home/op/id_ed25519
 
-# --- Windows / Active Directory ---
 windows:
   host: 10.0.0.10
   domain: CORP
@@ -385,12 +421,43 @@ windows:
   hash: aad3b435b51404eeaad3b435b51404ee:NThashhere
 ```
 
-- `jwt`/`header`/`cookie` are used as-is.
-- A `login:` block is **executed** (real HTTP) to capture a live session
-  cookie/token; if it fails, agents are told to authenticate themselves.
-- `ssh:` / `windows:` tell host agents how to authenticate.
+`ssh:` / `windows:` tell **host-mode** agents how to authenticate (Linux enum /
+privesc, Windows/AD via crackmapexec/impacket/evil-winrm/bloodhound).
 
-Use with `--creds creds.yaml` on `run` / `greybox` / `host`, or `/creds` in the REPL.
+### 8.4 Cloud (AWS / GCP / Azure)
+
+Exports the right env vars so the `aws` / `gcloud` / `az` CLIs authenticate
+automatically (read-only-first, non-destructive):
+
+```yaml
+aws:
+  access_key_id: AKIA...
+  secret_access_key: ...
+  # session_token: ...             # for temporary creds
+  region: us-east-1
+  # profile: my-sso-profile        # alternative to keys
+
+gcp:
+  service_account_json: /path/to/sa.json   # path (recommended); inline JSON also works
+  project: my-project-id
+
+azure:                             # service principal (best for automation)
+  tenant_id: ...
+  client_id: ...
+  client_secret: ...
+  subscription_id: ...
+```
+
+### 8.5 Using it
+
+```bash
+neurosploit run https://app.example --creds creds.yaml \
+  --subscription --model anthropic:claude-opus-4-8 -v
+# host mode uses ssh:/windows:/cloud: — neurosploit host <ip> --creds creds.yaml
+```
+
+Or `/creds creds.yaml` in the REPL. **Secrets stay in your file** — nothing is
+written elsewhere (inline GCP JSON is copied to a temp file only for the SDK).
 
 ---
 

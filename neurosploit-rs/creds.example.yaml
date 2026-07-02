@@ -1,17 +1,18 @@
 # NeuroSploit — example credentials file for authenticated testing.
-# Pass with:  neurosploit greybox <repo> --url <app> --creds creds.yaml
-#        or:  neurosploit run <url> --creds creds.yaml   (after adding --creds support)
+# Pass with:  neurosploit run <url> --creds creds.yaml
+#        or:  neurosploit greybox <repo> --url <app> --creds creds.yaml
+#        or:  neurosploit host <ip> --creds creds.yaml
 #        or in the interactive session:  /creds creds.yaml
 #
-# Provide ANY of the auth materials below (first match wins), and/or a `login`
-# flow the agents will perform with curl before testing.
+# Use only the blocks you need. Small YAML subset: flat key: value + one-level
+# nested blocks (2-space indent), # comments, values optionally quoted.
 
-# --- direct auth material (pick one) ---
+# ── Web auth: single identity (pick one) ─────────────────────────────────────
 jwt: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiYWRtaW4ifQ.signature
 # header: "X-Api-Key: 0123456789abcdef"
 # cookie: "session=deadbeef; role=admin"
 
-# --- OR an automated login flow ---
+# ── OR an automated login flow (harness performs it, captures the session) ───
 login:
   url: http://localhost:8080/login
   method: POST
@@ -21,7 +22,22 @@ login:
   password: password
   success: Logout        # text that appears on a successful login
 
-# --- infra/host credentials (used by `neurosploit host <ip> --creds creds.yaml`) ---
+# ── Multiple identities → access-control testing (IDOR/BOLA/BFLA/privesc) ─────
+# Define 2+ named roles; the agent authenticates as each and tests cross-role
+# access (authorized-vs-unauthorized proof). Give each role ONE credential type:
+#   jwt | header (raw) | cookie | apikey | login + username + password
+# admin:
+#   jwt: eyJ...adminBearer...
+# user:
+#   apikey: abc123               # → X-Api-Key: abc123
+# victim:
+#   cookie: "session=victimsess"
+# tester:
+#   login: https://app.example/api/login
+#   username: tester
+#   password: Passw0rd!
+
+# ── Infra/host (neurosploit host <ip> --creds creds.yaml) ────────────────────
 ssh:
   host: 10.0.0.5
   port: 22
@@ -35,3 +51,19 @@ windows:                  # also used for Active Directory
   user: jdoe
   password: Winter2026!   # or pass-the-hash:
   hash: aad3b435b51404eeaad3b435b51404ee:NThashhere
+
+# ── Cloud (exports env for aws/gcloud/az; read-only-first, non-destructive) ──
+# aws:
+#   access_key_id: AKIA...
+#   secret_access_key: ...
+#   # session_token: ...
+#   region: us-east-1
+#   # profile: my-sso-profile
+# gcp:
+#   service_account_json: /path/to/sa.json   # path (recommended); inline JSON also ok
+#   project: my-project-id
+# azure:                    # service principal (best for automation)
+#   tenant_id: ...
+#   client_id: ...
+#   client_secret: ...
+#   subscription_id: ...
