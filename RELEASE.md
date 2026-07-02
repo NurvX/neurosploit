@@ -1,3 +1,49 @@
+# NeuroSploit v3.5.5 — Release Notes
+
+**Release Date:** July 2026
+**Codename:** Cloud Testing & REPL polish
+**License:** MIT
+**Credits:** Joas A Santos & Red Team Leaders
+
+---
+
+## TL;DR
+
+v3.5.5 adds **cloud infrastructure testing** (AWS / GCP / Azure) with first-class
+credential connection, **17 new cloud agents**, and a nicer REPL.
+
+## Highlights
+
+- **Cloud test agents (+17 → library now 365 agents).** AWS, GCP and Azure
+  specialists in `agents_md/infra/` covering IAM privilege escalation, storage
+  exposure (S3 / GCS / Blob), compute & network exposure, secrets (Secrets
+  Manager / Secret Manager / Key Vault), service-account & service-principal
+  abuse, and Entra ID enumeration — plus a multi-cloud footprint/identity recon
+  agent. They drive the provider CLIs read-only-first, non-destructive.
+- **Connect cloud credentials via `creds.yaml`.** New `aws:`, `gcp:`, `azure:`
+  blocks. The harness exports the right env vars so `aws` / `gcloud` / `az` pick
+  them up automatically, and injects a directive telling the agents how to
+  authenticate and what to enumerate:
+  - **AWS** — `access_key_id`/`secret_access_key`[/`session_token`]/`region`, or a `profile`.
+  - **GCP** — a service-account JSON (`service_account_json`, path recommended;
+    inline single-line also works) → `GOOGLE_APPLICATION_CREDENTIALS` + project.
+  - **Azure** — a **service principal** (`tenant_id`/`client_id`/`client_secret`/
+    `subscription_id`) → `az login --service-principal` (best practice for
+    non-interactive automation).
+- **REPL polish.** New **`/chain <n>`** (attack-chain depth) and **`/agents list`**
+  (library category counts incl. infra/cloud); **`/show`** now displays
+  chain-depth and enabled integrations; help updated.
+- Cloud creds are never written to disk beyond your `creds.yaml`; inline GCP JSON
+  is materialized to a temp file only to satisfy the SDK/CLI.
+
+## Notes
+
+- Additive/back-compatible. Provider count is now 14 (Azure OpenAI added in
+  v3.5.2). See the README "Cloud credentials" section for a full `creds.yaml`
+  example.
+
+---
+
 # NeuroSploit v3.5.4 — Release Notes
 
 **Release Date:** July 2026

@@ -11,7 +11,7 @@ function Ok ($m) { Write-Host "  + $m" -ForegroundColor Green }
 function Warn($m){ Write-Host "  ! $m" -ForegroundColor Yellow }
 
 Write-Host ""
-Write-Host "  NeuroSploit installer (Windows) — v3.5.4" -ForegroundColor Cyan
+Write-Host "  NeuroSploit installer (Windows) — v3.5.5" -ForegroundColor Cyan
 $arch = $env:PROCESSOR_ARCHITECTURE
 Say "Platform: Windows / $arch"
 

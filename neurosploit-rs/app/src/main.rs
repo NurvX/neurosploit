@@ -1,4 +1,4 @@
-//! NeuroSploit v3.5.4 — interactive harness + CLI (`run` / `whitebox` / `agents` / `models`).
+//! NeuroSploit v3.5.5 — interactive harness + CLI (`run` / `whitebox` / `agents` / `models`).
 
 mod repl;
 mod tui;
@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 #[command(
     name = "neurosploit",
     version,
-    about = "NeuroSploit v3.5.4 — multi-model autonomous pentest harness",
-    long_about = "NeuroSploit v3.5.4 — a Rust multi-model harness that drives a pool of LLMs \
+    about = "NeuroSploit v3.5.5 — multi-model autonomous pentest harness",
+    long_about = "NeuroSploit v3.5.5 — a Rust multi-model harness that drives a pool of LLMs \
 (API key or local subscription: Claude/Codex/Gemini/Grok) to autonomously test a target. \
 After recon it INTELLIGENTLY selects only the agents matching the discovered surface, runs \
 them in parallel, then validates every finding by cross-model voting before reporting.\n\n\
@@ -474,6 +474,24 @@ pub(crate) async fn apply_creds(cfg: &mut RunConfig, path: Option<&str>) {
         cfg.instructions = Some(format!("{hi}\n{base}"));
         println!("  [*] host credentials loaded (SSH/Windows-AD)");
     }
+    // Cloud credentials (AWS / GCP / Azure) → export env for the provider CLIs
+    // and tell the agents how to authenticate & what to enumerate.
+    let cloud_env = c.cloud_env();
+    if !cloud_env.is_empty() {
+        for (k, v) in &cloud_env {
+            std::env::set_var(k, v);
+        }
+        let names: Vec<&str> = [
+            (!c.cloud.as_ref().map(|x| x.aws_access_key_id.is_empty() && x.aws_profile.is_empty()).unwrap_or(true), "AWS"),
+            (!c.cloud.as_ref().map(|x| x.gcp_sa_json.is_empty()).unwrap_or(true), "GCP"),
+            (!c.cloud.as_ref().map(|x| x.azure_client_id.is_empty()).unwrap_or(true), "Azure"),
+        ].iter().filter(|(on, _)| *on).map(|(_, n)| *n).collect();
+        println!("  [*] cloud credentials loaded ({}) — {} env var(s) exported", names.join("/"), cloud_env.len());
+        if let Some(ci) = c.cloud_instruction() {
+            let base = cfg.instructions.clone().unwrap_or_default();
+            cfg.instructions = Some(format!("{ci}\n{base}"));
+        }
+    }
     // No direct material but a login flow → perform it now.
     if cfg.auth.is_none() {
         if let Some(login) = &c.login {
@@ -534,7 +552,7 @@ pub(crate) fn spawn_engagement(base: &Path, mut cfg: RunConfig, mcp: bool, mode:
     cfg.rl_path = Some(base.join("data").join("rl_state_rs.json").display().to_string());
     write_status(&workdir, "running", &format!("\"target\":{:?}", cfg.target));
 
-    println!("  ┌─ NeuroSploit v3.5.4  ·  by Joas A Santos & Red Team Leaders");
+    println!("  ┌─ NeuroSploit v3.5.5  ·  by Joas A Santos & Red Team Leaders");
     println!("  │  run id : {run_id}");
     println!("  │  target : {}", cfg.target);
     println!("  │  models : {}", cfg.models.join(", "));

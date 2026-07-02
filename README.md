@@ -1,4 +1,4 @@
-<h1 align="center">🧠 NeuroSploit v3.5.4</h1>
+<h1 align="center">🧠 NeuroSploit v3.5.5</h1>
 
 <p align="center">
   <a href="https://github.com/JoasASantos/NeuroSploit/stargazers"><img src="https://img.shields.io/github/stars/JoasASantos/NeuroSploit?style=for-the-badge&logo=github&color=8b5cf6" alt="Stars"></a>
@@ -8,11 +8,11 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-3.5.4-blue?style=flat-square">
+  <img src="https://img.shields.io/badge/Version-3.5.5-blue?style=flat-square">
   <img src="https://img.shields.io/badge/Harness-Rust%20%7C%20tokio-e6b673?style=flat-square">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
-  <img src="https://img.shields.io/badge/MD%20Agents-329-red?style=flat-square">
-  <img src="https://img.shields.io/badge/Models-12%20providers-success?style=flat-square">
+  <img src="https://img.shields.io/badge/MD%20Agents-365-red?style=flat-square">
+  <img src="https://img.shields.io/badge/Models-14%20providers-success?style=flat-square">
   <img src="https://img.shields.io/badge/Modes-Black%20%7C%20White%20%7C%20Grey%20%7C%20Host-9cf?style=flat-square">
   <img src="https://img.shields.io/badge/Auth-API%20key%20%7C%20Subscription-orange?style=flat-square">
 </p>
@@ -24,7 +24,7 @@
 >
 > 📖 **New here? Read the [full Tutorial & User Guide →](TUTORIAL.md)** — every mode, flag, config and example explained.
 
-> 🆕 **New in v3.5.4 — Robust attack chaining + fewer false positives:** a
+> 🆕 **New in v3.5.5 — Robust attack chaining + fewer false positives:** a
 > multi-round, decision-driven **post-exploitation** engine takes each confirmed
 > foothold and expands new directions (cred reuse, privesc, lateral movement,
 > exfil, new surface), carrying **loot** forward across rounds (`--chain-depth`).
@@ -41,7 +41,7 @@ LLMs** — via **API key** or local **subscription** (Claude Code / Codex / Gemi
 Grok) — recons the target, **intelligently selects only the agents that match the
 discovered surface**, runs them in parallel, **chains** findings into deeper
 impact, and **validates every claim by cross-model voting + tool-receipt
-grounding** before reporting. It ships **329 markdown agents** and a **Mission
+grounding** before reporting. It ships **365 markdown agents** and a **Mission
 Control TUI**.
 
 ### Engagement modes
@@ -51,7 +51,7 @@ Control TUI**.
 | **Black-box** | `neurosploit run <url>` | recon → select → exploit → vote → report |
 | **White-box** | `neurosploit whitebox <repo>` | source/SAST review (file:line evidence) |
 | **Grey-box** | `neurosploit greybox <repo> --url <app>` | code review **+** live exploitation together |
-| **Host/Infra** | `neurosploit host <ip> --creds creds.yaml` | Linux / Windows / Active Directory testing |
+| **Host/Infra** | `neurosploit host <ip> --creds creds.yaml` | Linux / Windows / AD **and cloud** (AWS/GCP/Azure) testing |
 | **Mission Control** | `neurosploit tui <url>` | live TUI panels + composer during the run |
 | **Interactive** | `neurosploit` | persistent REPL session (resumes per project) |
 
@@ -68,6 +68,10 @@ Control TUI**.
 - 🔗 **Attack chaining** — 12 multi-stage chain agents (SQLi→RCE→LPE, SSRF→AWS
   creds, upload→LFI→RCE→LPE, default-creds→domain, …); each stage proven before
   advancing.
+- ☁️ **Cloud testing** — AWS / GCP / Azure agents that drive the provider CLIs
+  (`aws`/`gcloud`/`az`). Connect via `creds.yaml`: AWS keys, a Google
+  service-account JSON, or an Azure service principal — see
+  [Cloud credentials](#cloud-credentials-awsgcpazure).
 - 🗺️ **Attack graph & kill chain** — findings mapped to OWASP / CWE / MITRE
   ATT&CK / stage; rendered as a Mermaid graph in the report.
 - ✅ **Cross-model validation** — a different model adjudicates each finding;
@@ -183,6 +187,48 @@ neurosploit whitebox https://github.com/myorg/app --jira --subscription --model 
 | **Jira** | one card per finding (`--jira`) | `JIRA_EMAIL`, `JIRA_API_TOKEN` |
 
 📖 Step-by-step setup for each tool: **[TUTORIAL-INTEGRATION.md](TUTORIAL-INTEGRATION.md)**.
+
+---
+
+## ☁️ Cloud credentials (AWS/GCP/Azure)
+
+Add a cloud block to `creds.yaml` and the harness exports the right env vars so
+the AWS/GCP/Azure agents can drive `aws` / `gcloud` / `az`. Secrets stay in your
+file/secret-manager; agents do **read-only enumeration first, never destructive**.
+
+```yaml
+# --- AWS: static keys (or a named profile) ---
+aws:
+  access_key_id: AKIA...
+  secret_access_key: ...
+  # session_token: ...        # if using temporary creds
+  region: us-east-1
+  # profile: my-sso-profile   # alternative to keys
+
+# --- GCP: service-account JSON (path recommended; inline single-line also works) ---
+gcp:
+  service_account_json: /path/to/sa.json
+  project: my-project-id
+
+# --- Azure: service principal (recommended for automation) ---
+azure:
+  tenant_id: ...
+  client_id: ...
+  client_secret: ...
+  subscription_id: ...
+```
+
+```bash
+neurosploit host my-cloud-account --creds creds.yaml \
+  --subscription --model anthropic:claude-opus-4-8 -v
+```
+
+Agents cover IAM privilege-escalation, storage exposure (S3/GCS/Blob), compute &
+network exposure, secrets (Secrets Manager / Secret Manager / Key Vault),
+service-account/SP abuse, and identity enumeration (Entra ID). Best-practice
+auth: **AWS** access keys or profile; **GCP** a service-account JSON
+(`GOOGLE_APPLICATION_CREDENTIALS`); **Azure** a service principal
+(`az login --service-principal`).
 
 ---
 

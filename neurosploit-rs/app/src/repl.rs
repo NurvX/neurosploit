@@ -1,4 +1,4 @@
-//! NeuroSploit v3.5.4 — interactive session (Claude-Code / Codex / Cursor-CLI style).
+//! NeuroSploit v3.5.5 — interactive session (Claude-Code / Codex / Cursor-CLI style).
 //!
 //! Launched when `neurosploit` runs with no subcommand. A persistent REPL with
 //! real line editing (arrow-key history recall, Ctrl-A/E/K, paste), model
@@ -119,7 +119,7 @@ struct LiveCheckpoint {
 const COMMANDS: &[&str] = &[
     "/help", "/show", "/config", "/providers", "/model", "/key", "/sub", "/target",
     "/repo", "/auth", "/creds", "/focus", "/attach", "/context", "/mcp", "/offline",
-    "/votes", "/agents", "/theme", "/clear", "/run", "/stop", "/continue", "/runs", "/results", "/report",
+    "/votes", "/chain", "/agents", "/theme", "/clear", "/run", "/stop", "/continue", "/runs", "/results", "/report",
     "/status", "/diff", "/retest", "/integrations", "/quit",
 ];
 
@@ -198,6 +198,7 @@ struct Session {
     mcp: bool,
     vote_n: usize,
     max_agents: usize,
+    chain_depth: usize,
     offline: bool,
     target: Option<String>,
     repo: Option<String>,
@@ -216,6 +217,7 @@ impl Default for Session {
             mcp: false,
             vote_n: 3,
             max_agents: 0,
+            chain_depth: 2,
             offline: false,
             target: None,
             repo: None,
@@ -299,7 +301,7 @@ pub async fn repl(base: &Path) -> anyhow::Result<()> {
     let backends = harness::installed_cli_backends();
     println!("\x1b[1m");
     println!("  ███╗   ██╗███████╗██╗   ██╗██████╗  ██████╗");
-    println!("  ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗   NeuroSploit v3.5.4");
+    println!("  ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗   NeuroSploit v3.5.5");
     println!("  ██╔██╗ ██║█████╗  ██║   ██║██████╔╝██║   ██║   interactive harness");
     println!("  ██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║   by Joas A Santos");
     println!("  ██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝   & Red Team Leaders");
@@ -432,7 +434,22 @@ pub async fn repl(base: &Path) -> anyhow::Result<()> {
             "/offline" => { s.offline = !matches!(arg, "off" | "false" | "0" | "no"); println!("  offline: {}", onoff(s.offline)); }
             "/integrations" | "/integration" => integrations_cmd(arg),
             "/votes" => { s.vote_n = arg.parse().unwrap_or(s.vote_n); println!("  votes: {}", s.vote_n); }
-            "/agents" => { s.max_agents = arg.parse().unwrap_or(s.max_agents); println!("  max agents: {}", s.max_agents); }
+            "/chain" => {
+                if arg.is_empty() { println!("  attack-chain depth: {} (0 disables) — set with /chain <n>", s.chain_depth); }
+                else { s.chain_depth = arg.parse().unwrap_or(s.chain_depth); println!("  attack-chain depth: {}", s.chain_depth); }
+            }
+            "/agents" => {
+                if arg == "list" || arg == "ls" {
+                    let lib = agents::load(base);
+                    println!("  agent library ({} total):", lib.total());
+                    println!("    vulns {} · code {} · infra/cloud {} · recon {} · chains {} · meta {}",
+                        lib.vulns.len(), lib.code.len(), lib.infra.len(), lib.recon.len(), lib.chains.len(), lib.meta.len());
+                } else if arg.is_empty() {
+                    println!("  max agents: {} (0 = all) — set with /agents <n>, or /agents list for counts", s.max_agents);
+                } else {
+                    s.max_agents = arg.parse().unwrap_or(s.max_agents); println!("  max agents: {}", s.max_agents);
+                }
+            }
             "/clear" => { print!("\x1b[2J\x1b[H"); }
             "/run" | "/go" => {
                 if active.as_ref().map(|a| !a.done.load(Ordering::Relaxed)).unwrap_or(false) {
@@ -667,6 +684,7 @@ async fn run(base: &Path, s: &Session, history: &mut Vec<RunRecord>) {
     cfg.models = s.models.clone();
     cfg.subscription = s.subscription;
     cfg.vote_n = s.vote_n;
+    cfg.chain_depth = s.chain_depth;
     cfg.max_agents = s.max_agents;
     cfg.verbose = true;
     cfg.offline = s.offline;
@@ -716,6 +734,7 @@ async fn start_background(base: &Path, s: &Session, reader: &mut Reader,
     cfg.models = s.models.clone();
     cfg.subscription = s.subscription;
     cfg.vote_n = s.vote_n;
+    cfg.chain_depth = s.chain_depth;
     cfg.max_agents = s.max_agents;
     cfg.verbose = true;
     cfg.offline = s.offline;
@@ -1062,7 +1081,14 @@ fn show(s: &Session) {
     println!("  │  auth     : {}", s.auth.clone().unwrap_or_else(|| "(none)".into()));
     println!("  │  creds    : {}", s.creds.clone().unwrap_or_else(|| "(none)".into()));
     println!("  │  focus    : {}", s.instructions.clone().unwrap_or_else(|| "(none — tests everything)".into()));
-    println!("  │  opts     : mcp={} offline={} votes={} max-agents={}", onoff(s.mcp), onoff(s.offline), s.vote_n, s.max_agents);
+    println!("  │  opts     : mcp={} offline={} votes={} chain-depth={} max-agents={}", onoff(s.mcp), onoff(s.offline), s.vote_n, s.chain_depth, s.max_agents);
+    // Integrations at a glance (see /integrations for detail).
+    {
+        let ig = harness::integrations::Integrations::load(&proj_dir());
+        let on: Vec<&str> = [(ig.github.enabled, "github"), (ig.gitlab.enabled, "gitlab"), (ig.jira.enabled, "jira")]
+            .iter().filter(|(e, _)| *e).map(|(_, n)| *n).collect();
+        println!("  │  integr.  : {}", if on.is_empty() { "(none — /integrations)".into() } else { on.join(", ") });
+    }
     // API-key status for the providers your selected models need.
     if !s.subscription {
         let provs: std::collections::BTreeSet<String> = s.models.iter()
@@ -1111,8 +1137,9 @@ fn help() {
 
     println!("\n  \x1b[2mOPTIONS\x1b[0m");
     h("/mcp on|off",        "Playwright MCP browser    /offline on|off  self-test");
-    h("/votes <n>",         "validator votes           /agents <n>  cap agents");
-    h("/theme color|mono",  "/show (config)            /clear        /quit");
+    h("/votes <n>",         "validator votes           /chain <n>   attack-chain depth");
+    h("/agents <n>|list",   "cap agents · list counts  /theme color|mono");
+    h("/show (config)",     "/clear                    /quit");
 
     println!("\n  \x1b[2mMODES — black-box: set /target · white-box: set /repo · grey-box: set BOTH /repo + /target · host: /target <ip> + /creds\x1b[0m");
     println!("  \x1b[2mFindings are checkpointed live to .neurosploit/ — quit/crash mid-run and they're recovered into /runs next launch.\x1b[0m");
