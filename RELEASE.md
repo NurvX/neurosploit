@@ -102,6 +102,25 @@ interactive line-editing.
 - **Rate-limit testing** is a first-class control check (small non-disruptive
   burst → look for 429/lockout/Retry-After), never a DoS.
 
+## Browser-driven testing & SPA agents (Juice Shop-ready)
+
+- **Agents now actively drive the browser while testing.** The tool doctrine was
+  strengthened: on JS-heavy / SPA (Angular/React/Vue) targets the agent MUST use
+  the **Playwright MCP** browser (render, wait, read the live DOM, click
+  client-side routes, watch the network to discover the real REST/GraphQL API,
+  prove client-side issues with a screenshot). When no MCP is present, it uses the
+  **Playwright CLI** (writes & runs a small `playwright` script / `npx playwright
+  screenshot`) to render and capture the app's XHR/fetch traffic — **complementing
+  curl**, which only sees the empty shell.
+- **Deterministic probe detects SPAs** (`<app-root>`, `ng-version`, near-empty
+  body + linked scripts → Angular/React/Vue/SPA) and flags in recon that the
+  browser is required — so the SPA agents get selected.
+- **+8 SPA/API agents** (library **383**): SPA API & route discovery, hidden-admin /
+  client-side access control, login SQLi bypass, SPA DOM XSS, API BOLA via
+  sequential IDs, privileged registration / mass assignment, JWT forgery &
+  verification bypass, and SPA business-logic abuse — tuned for apps like OWASP
+  Juice Shop. (Existing NoSQLi/GraphQL/JWT/mass-assignment agents complement them.)
+
 ## Subscription login check & Playwright MCP fixes
 
 - **Subscription login preflight.** Before a `--subscription` run, the harness

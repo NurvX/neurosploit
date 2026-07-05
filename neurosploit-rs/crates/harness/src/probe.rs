@@ -157,15 +157,28 @@ pub async fn probe(target: &str) -> Probe {
         }
     }
     // Tech hints (headers + body keywords).
-    let hay = format!("{} {} {} {}", p.server, p.powered_by, p.content_type, body.chars().take(20_000).collect::<String>()).to_lowercase();
+    let hay = format!("{} {} {} {}", p.server, p.powered_by, p.content_type, body.chars().take(30_000).collect::<String>()).to_lowercase();
     for (needle, tech) in [
         ("wp-content", "WordPress"), ("/wp-json", "WordPress"), ("drupal", "Drupal"), ("joomla", "Joomla"),
         ("x-drupal", "Drupal"), ("laravel_session", "Laravel"), ("csrftoken", "Django"), ("__next", "Next.js"),
-        ("react", "React"), ("vue", "Vue"), ("angular", "Angular"), ("nginx", "nginx"), ("apache", "Apache"),
+        ("react", "React"), ("vue", "Vue"), ("nginx", "nginx"), ("apache", "Apache"),
         ("microsoft-iis", "IIS"), ("express", "Express"), ("phpsessid", "PHP"), ("jsessionid", "Java"),
         ("cloudflare", "Cloudflare"), ("swagger", "Swagger/OpenAPI"), ("graphql", "GraphQL"),
+        // SPA / framework markers (Juice Shop = Angular <app-root>).
+        ("<app-root", "Angular"), ("ng-version", "Angular"), ("angular", "Angular"),
+        ("data-reactroot", "React"), ("id=\"root\"", "SPA"), ("id=\"app\"", "SPA"),
+        ("polyfills", "SPA"), ("runtime.", "SPA"),
     ] {
         if hay.contains(needle) && !p.tech.iter().any(|t| t == tech) { p.tech.push(tech.to_string()); }
+    }
+    // Heuristic: a nearly-empty body with several linked scripts is a JS SPA
+    // (curl sees the shell only — the browser is required to render it).
+    let text_len = body.chars().filter(|c| !c.is_whitespace()).count();
+    if p.scripts.len() >= 2 && text_len < 3000 && !p.tech.iter().any(|t| t == "SPA") {
+        p.tech.push("SPA".to_string());
+    }
+    if p.tech.iter().any(|t| t == "SPA" || t == "Angular" || t == "React" || t == "Vue") {
+        p.notes.push("JS-rendered SPA — curl sees the shell only; use the browser (MCP/Playwright) to render, enumerate routes, and discover the API.".to_string());
     }
 
     // CORS reflection probe.

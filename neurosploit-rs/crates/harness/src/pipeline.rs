@@ -51,9 +51,14 @@ fn operator_directives(cfg: &RunConfig) -> String {
 /// where these tools are preinstalled.
 fn tool_doctrine(mcp_on: bool) -> String {
     let browser = if mcp_on {
-        "A Playwright MCP browser IS available — use it for JS-heavy pages, DOM/JS execution, and to PROVE client-side issues (e.g. XSS firing); capture screenshots as evidence."
+        "BROWSER (Playwright MCP is available — USE IT, don't rely on curl alone): for any JS-heavy / SPA / Angular / React / Vue target, DRIVE THE REAL BROWSER — navigate, wait for the app to render, read the live DOM, click through client-side routes (e.g. #/admin, #/administration, #/score-board), submit forms, and watch the NETWORK requests the app makes to discover the real REST/GraphQL API. PROVE client-side issues (XSS actually firing, DOM sinks, auth flows) in the browser and capture a screenshot as evidence. Use curl for the API/backend calls you discover; use the browser for anything the SPA renders or executes client-side."
     } else {
-        "No browser MCP is available — use `curl` (and `wget`) for all HTTP interaction; render/inspect responses directly."
+        "BROWSER (no MCP — use the Playwright CLI to complement curl on JS-heavy targets): curl only sees the initial HTML (an empty SPA shell renders nothing useful). To render/interact, write a small Playwright script and run it, e.g.:\n\
+         `npx -y playwright@latest install chromium >/dev/null 2>&1; cat > /tmp/pw.js <<'EOF'\n\
+         const { chromium } = require('playwright');\n(async () => { const b = await chromium.launch(); const p = await b.newPage();\n\
+         p.on('request', r => console.log('REQ', r.method(), r.url()));\n await p.goto(process.argv[2], {waitUntil:'networkidle'});\n\
+         console.log(await p.content()); await p.screenshot({path:'/tmp/shot.png'}); await b.close(); })();\nEOF`\n\
+         then `node /tmp/pw.js <url>` to get the rendered DOM + the XHR/fetch URLs the app calls (that reveals the real API). Use `npx playwright screenshot <url> out.png` for quick proof. Combine with curl for the discovered API endpoints."
     };
     format!(
         "TOOLING (authorized; best on Kali Linux or the kalilinux/kali-rolling Docker image):\n\
