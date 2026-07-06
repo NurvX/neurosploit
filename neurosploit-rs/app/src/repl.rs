@@ -225,6 +225,8 @@ struct Session {
     target: Option<String>,
     repo: Option<String>,
     auth: Option<String>,
+    /// Named identities for multi-role access-control testing (name, header line).
+    roles: Vec<(String, String)>,
     creds: Option<String>,
     instructions: Option<String>,
     attachments: Vec<String>,
@@ -247,6 +249,7 @@ impl Default for Session {
             target: None,
             repo: None,
             auth: None,
+            roles: Vec::new(),
             creds: None,
             instructions: None,
             attachments: Vec::new(),
@@ -500,9 +503,32 @@ pub async fn repl(base: &Path) -> anyhow::Result<()> {
                 }
             }
             "/auth" => {
-                if arg.is_empty() { println!("  auth: {}", s.auth.clone().unwrap_or_else(|| "(none) — set with /auth <header>, clear with /auth clear".into())); }
-                else if arg == "clear" { s.auth = None; println!("  auth cleared"); }
-                else { s.auth = Some(arg.to_string()); println!("  auth set: {arg}"); }
+                if arg.is_empty() {
+                    match s.auth.clone() {
+                        Some(a) => println!("  auth: {a}"),
+                        None => println!("  auth: (none) — /auth <header> · or roles: /auth admin <hdr> · /auth user <hdr>"),
+                    }
+                    for (n, v) in &s.roles { println!("    role {n}: {v}"); }
+                    if s.roles.len() >= 2 { println!("  \x1b[2m{} identities → access-control testing (IDOR/BOLA/BFLA) on /run\x1b[0m", s.roles.len()); }
+                }
+                else if arg == "clear" { s.auth = None; s.roles.clear(); println!("  auth + roles cleared"); }
+                else {
+                    // "<role> <value>" if the first token is a bare identifier (no ':').
+                    let mut it = arg.splitn(2, char::is_whitespace);
+                    let first = it.next().unwrap_or("");
+                    let rest = it.next().unwrap_or("").trim();
+                    let is_role = !first.contains(':') && !rest.is_empty()
+                        && first.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+                    if is_role {
+                        let val = normalize_auth(rest);
+                        s.roles.retain(|(n, _)| n != first);
+                        s.roles.push((first.to_string(), val.clone()));
+                        if s.auth.is_none() { s.auth = Some(val); } // first role also = primary session
+                        println!("  role '{first}' set ({} identit{}) — test both scenarios on /run", s.roles.len(), if s.roles.len() == 1 { "y" } else { "ies" });
+                    } else {
+                        s.auth = Some(arg.to_string()); println!("  auth set: {arg}");
+                    }
+                }
             }
             "/creds" => {
                 if arg.is_empty() { println!("  creds file: {}", s.creds.clone().unwrap_or_else(|| "(none) — set with /creds <file.yaml>".into())); }
@@ -847,6 +873,11 @@ async fn run(base: &Path, s: &Session, history: &mut Vec<RunRecord>) {
         }
     };
     cfg.auth = s.auth.clone();
+    // Multiple /auth identities → prepend the access-control (IDOR/BOLA/BFLA) directive.
+    if let Some(rd) = roles_directive(&s.roles) {
+        let base = cfg.instructions.clone().unwrap_or_default();
+        cfg.instructions = Some(format!("{rd}{base}"));
+    }
     if let M::Grey { repo, .. } = &m {
         cfg.repo = Some(repo.clone());
     }
@@ -1374,7 +1405,7 @@ fn help() {
     println!("\n  \x1b[2mTARGET & SCOPE\x1b[0m");
     h("/target <url[,..]>", "black-box target URL (comma-separated = multi-target, sequential)");
     h("/repo <path|url>",   "analyse a repo — path or GitHub URL (repo + target = greybox)");
-    h("/auth <value>",      "auth header, e.g. 'Authorization: Bearer <jwt>' (no arg = show)");
+    h("/auth <value>",      "auth header (Bearer/cookie/key). Roles: /auth admin <hdr> · /auth user <hdr>");
     h("/creds <file.yaml>", "creds: jwt/header/cookie/login + ssh/windows + aws/gcp/azure + roles");
     h("/focus <text>",      "steer the tests (or just type the instruction)");
     h("@path @dir @f:1-20", "attach a file/folder/line-range to context (Tab → menu)");
@@ -1502,6 +1533,30 @@ const PROMPT: &str = "neurosploit› ";
 /// Sentinel returned by the reader on Ctrl-C so the loop can confirm before
 /// exiting (instead of losing an active run to a stray interrupt).
 const CTRL_C: &str = "\u{0}__ctrl_c__";
+
+/// Turn a role value into a header line: a full `Header: value` is used as-is;
+/// a bare token becomes `Authorization: Bearer <token>`.
+fn normalize_auth(v: &str) -> String {
+    let v = v.trim();
+    if v.contains(':') { v.to_string() } else { format!("Authorization: Bearer {v}") }
+}
+
+/// Build the multi-role access-control directive from the session roles (mirrors
+/// creds.yaml roles). Empty when fewer than 2 identities.
+fn roles_directive(roles: &[(String, String)]) -> Option<String> {
+    if roles.len() < 2 { return None; }
+    let list = roles.iter().map(|(n, v)| format!("  - {n} → send `{v}`")).collect::<Vec<_>>().join("\n");
+    Some(format!(
+        "MULTI-ROLE ACCESS CONTROL — you have {} identities:\n{list}\n\
+         Authenticate as EACH identity (send its header on every request). Test broken access control ACROSS roles and \
+         compare authorized vs unauthorized:\n\
+         - BOLA/IDOR: as a low-privilege role capture your own object IDs, then read/modify another role's objects by ID.\n\
+         - BFLA: call admin-only functions/endpoints/HTTP methods with a low-privilege role's session.\n\
+         - Privilege escalation: mass-assignment of role/permission fields, or reaching admin routes.\n\
+         Prove each with the two requests (authorized role succeeds, unauthorized role should be denied but isn't). \
+         Read-only proof; mask any PII.\n\n",
+        roles.len()))
+}
 
 /// Split the session target into one or more URLs (comma-separated list).
 fn session_targets(s: &Session) -> Vec<String> {

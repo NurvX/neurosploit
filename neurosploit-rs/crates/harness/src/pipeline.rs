@@ -201,6 +201,18 @@ const DEPTH_DOCTRINE: &str = "DEPTH (exploit, don't just expose):\n\
 - Audit tokens: for any JWT, check alg-confusion (RS→HS), alg:none, kid/jku injection, whether the signature is actually verified, and weak/guessable HS256 secrets.\n\
 - Calibrate honestly: claim High/Critical ONLY when impact is DEMONSTRATED; unproven DoS/abuse is Low/Info or a lead, never inflated.\n\n";
 
+/// DECISION doctrine (v3.5.5): make the agent REASON about where to attack from
+/// the observed responses, map & connect routes, mine parameters, test both auth
+/// levels, and build PoCs — instead of blindly firing a fixed payload list.
+const DECISION_DOCTRINE: &str = "DECIDE WHERE TO ATTACK (analyse, then act):\n\
+- Analyse responses FIRST: read status, headers, content-type, body, redirects and TIMING; let the evidence pick the technique (e.g. SQL error → SQLi; reflected input → XSS; numeric id in JSON → IDOR; missing X-Frame-Options → clickjacking; state-changing POST without a token → CSRF). Don't run payloads that the response makes irrelevant.\n\
+- Map & CONNECT routes: build the route/endpoint graph and link one endpoint to another — an id/token/filename returned by endpoint A is the input to endpoint B; follow multi-step flows (login → profile → order → admin) and hunt the SENSITIVE ones (auth, password reset, payment, file upload/download, account/role changes, admin, export).\n\
+- Mine PARAMETERS: enumerate query/body/header/cookie params (incl. hidden ones from JS/source maps); for each, reason about what it does and test the fitting attack (IDOR, injection, path traversal, mass-assignment, open-redirect, SSRF). Add plausible params the API might accept (id, user, role, admin, debug, redirect, file, callback).\n\
+- MOCK realistic data: when a request needs valid-looking input to reach deeper logic, synthesize believable test data (emails, names, CPFs/SSNs with valid checksums, phone numbers, UUIDs, tokens, JSON bodies) so the flow proceeds — never use real PII.\n\
+- Authenticated testing: if you can authenticate (given creds/roles or a login you performed), REUSE the session and exploit the AUTHENTICATED surface — the endpoints/params only reachable while logged in are where the high-impact bugs live. Test as EACH role you have (e.g. normal user AND admin) and compare.\n\
+- Build PoCs when needed: for issues that need an artifact to prove (clickjacking → an HTML page that frames the target; CSRF → an auto-submitting HTML form; a multi-step or timing exploit → a script), WRITE the PoC to the run's PoC dir, run/validate it, and cite the file in the evidence.\n\
+- Test control BYPASSES: when something returns 401/403/redirect or is 'blocked', try to bypass it (verb tampering, path/case/encoding normalization, X-Original-URL / X-Rewrite-URL / X-Forwarded-* headers, missing-vs-invalid token, direct object/API access) and confirm the bypass with the two requests.\n\n";
+
 /// Black-box web engagement: recon → parallel exploit → N-model vote → report.
 pub async fn run(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<String>) -> RunOutput {
     pool.set_progress(tx.clone());
@@ -313,13 +325,13 @@ pub async fn run(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Sender<Str
                 let user = format!(
                     "AUTHORIZED engagement — you have explicit permission to test {target}. \
                      Do not ask for confirmation — proceed and PROVE each issue.\n\n\
-                     {directives}{react}{depth}{safety}{doctrine}{body}\n\nWhen done, reply with ONLY a JSON array of confirmed findings (may be empty []). \
+                     {directives}{react}{depth}{decision}{safety}{doctrine}{body}\n\nWhen done, reply with ONLY a JSON array of confirmed findings (may be empty []). \
                      Each item: {{id,title,severity,cwe,endpoint,payload,evidence,impact,remediation,confidence}}. \
                      `evidence` must contain the concrete proof (request/response excerpt).",
                     target = target,
                     directives = directives,
                     react = REACT_DOCTRINE,
-                    depth = DEPTH_DOCTRINE, safety = SAFETY_DOCTRINE,
+                    depth = DEPTH_DOCTRINE, decision = DECISION_DOCTRINE, safety = SAFETY_DOCTRINE,
                     doctrine = tool_doctrine(mcp_on),
                     body = ag.user.replace("{target}", &target).replace("{recon_json}", &recon),
                 );
@@ -535,11 +547,11 @@ pub async fn run_greybox(cfg: RunConfig, lib: &Library, pool: &ModelPool, tx: Se
                 }
                 let user = format!(
                     "AUTHORIZED greybox engagement on {target} — you also have the source review below. \
-                     Proceed and PROVE each issue against the LIVE app.\n\n{directives}{leads}{react}{depth}{safety}{doctrine}{body}\n\n\
+                     Proceed and PROVE each issue against the LIVE app.\n\n{directives}{leads}{react}{depth}{decision}{safety}{doctrine}{body}\n\n\
                      Reply ONLY a JSON array of confirmed findings (may be []): \
                      {{id,title,severity,cwe,endpoint,payload,evidence,impact,remediation,confidence}}.",
                     target = target, directives = directives, leads = leads,
-                    react = REACT_DOCTRINE, depth = DEPTH_DOCTRINE, safety = SAFETY_DOCTRINE, doctrine = tool_doctrine(mcp_on),
+                    react = REACT_DOCTRINE, depth = DEPTH_DOCTRINE, decision = DECISION_DOCTRINE, safety = SAFETY_DOCTRINE, doctrine = tool_doctrine(mcp_on),
                     body = ag.user.replace("{target}", &target).replace("{recon_json}", &recon),
                 );
                 match pool.complete_routed(Task::Exploit, &ag.name, &ag.system, &user).await {
@@ -683,13 +695,13 @@ async fn chain_from_seed(pool: &ModelPool, target: &str, directives: &str, recon
     };
     let short: String = seed.title.chars().take(28).collect();
     let user = format!(
-        "AUTHORIZED engagement on {target}.\n\n{directives}{react}{depth}{safety}{doctrine}\
+        "AUTHORIZED engagement on {target}.\n\n{directives}{react}{depth}{decision}{safety}{doctrine}\
          FOOTHOLD TO EXPAND (round {round}/{max}):\n- [{}] {} @ {} ({})\n  payload: {}\n  evidence: {}\n\n\
          LOOT GATHERED (reuse it):\n{loot_block}\n\n{recipe_block}RECON:\n{recon_ctx}\n\n\
          From THIS foothold, DECIDE the best directions and PROVE new impact — post-exploitation (loot creds/keys/config/source), credential reuse, privilege escalation (horizontal & vertical), lateral movement to adjacent services/hosts, data exfiltration, and NEW attack surface it exposes. Every claim needs a real tool receipt.\n\n\
          Reply ONLY JSON: {{\"findings\":[{{id,title,severity,cwe,endpoint,payload,evidence,impact,remediation,confidence}}],\"loot\":[\"cred:user:pass@host\",\"token:...\",\"host:10.0.0.5\",\"endpoint:/internal/api\"]}} (empty arrays are fine).",
         seed.severity, seed.title, seed.endpoint, seed.cwe, seed.payload, seed.evidence,
-        react = REACT_DOCTRINE, depth = DEPTH_DOCTRINE, safety = SAFETY_DOCTRINE, doctrine = tool_doctrine(pool.mcp_config.is_some()),
+        react = REACT_DOCTRINE, depth = DEPTH_DOCTRINE, decision = DECISION_DOCTRINE, safety = SAFETY_DOCTRINE, doctrine = tool_doctrine(pool.mcp_config.is_some()),
     );
     let label = format!("chain:{short}");
     match pool.complete_routed(Task::Exploit, &label, CHAIN_SYS, &user).await {

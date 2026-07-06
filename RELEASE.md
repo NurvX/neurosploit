@@ -102,6 +102,26 @@ interactive line-editing.
 - **Rate-limit testing** is a first-class control check (small non-disruptive
   burst → look for 429/lockout/Retry-After), never a DoS.
 
+## Decision-driven deep exploitation
+
+- **DECISION doctrine** injected into every exploit/grey/chain prompt: analyse
+  responses FIRST and let the evidence pick the technique; **map & connect
+  routes** (one endpoint's output feeds another's input) and hunt sensitive flows
+  (auth, reset, payment, upload, admin, export); **mine parameters**
+  (query/body/header/cookie + hidden ones from JS/source maps) and test the
+  fitting attack per param; **mock realistic data** to reach deeper logic (never
+  real PII); **exploit the authenticated surface** after logging in and compare
+  each role; **build PoCs** when a proof needs an artifact; and **bypass controls**
+  (verb/path/encoding/header tricks) on anything blocked.
+- **Multi-role `/auth`** — set several identities in the REPL:
+  `/auth admin <hdr>` · `/auth user <hdr>` (Bearer/cookie/API-key; a bare token
+  becomes `Authorization: Bearer …`). With ≥2 roles the run gets the access-control
+  directive (IDOR/BOLA/BFLA/privesc, authorized-vs-unauthorized proof) and tests
+  both scenarios. (Same as the `creds.yaml` role blocks, now one command away.)
+- **+6 decision agents** (library **389**): `param_miner`, `endpoint_flow_linker`,
+  `authenticated_surface_exploit`, `clickjacking_poc` (writes a framing HTML PoC),
+  `csrf_poc` (writes an auto-submitting HTML PoC), and `access_control_bypass`.
+
 ## Browser-driven testing & SPA agents (Juice Shop-ready)
 
 - **Agents now actively drive the browser while testing.** The tool doctrine was
