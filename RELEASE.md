@@ -102,6 +102,22 @@ interactive line-editing.
 - **Rate-limit testing** is a first-class control check (small non-disruptive
   burst → look for 429/lockout/Retry-After), never a DoS.
 
+## Bug-bounty methodology & recon tricks
+
+- **Bug-bounty methodology meta-agent** (`agents_md/meta/bugbounty_methodology.md`,
+  library **398**) — distilled, high-signal techniques from public writeups
+  (HackerOne Hacktivity, KingOfBugBounty tips, Awesome-Bugbounty-Writeups,
+  bug-bounty-reference and top hunters' reports): the hunter *mindset* plus the
+  concrete per-class tricks (IDOR/BOLA, 403 bypass, account takeover, SSRF→cloud,
+  business logic/race, cache poisoning, subdomain takeover, GraphQL) and how to
+  chain and report them — depth and proof over scanner breadth.
+- **Recon upgraded with KingOfBugBounty-style tricks** — `RECON_SYS` now expands
+  scope (subdomains via crt.sh/subfinder/amass → httpx), harvests historical URLs
+  (gau/waybackurls/katana), filters with `gf` patterns, mines params (arjun +
+  JS/wayback), content-discovers (ffuf/feroxbuster), and checks classic exposures
+  (.git/.env/swagger/actuator, dangling CNAMEs). Degrades gracefully to what's
+  installed; prioritises auth/reset/payment/upload/admin/export flows.
+
 ## EOL / End-of-Support exploitation
 
 - **+8 EOL agents** (library **397**) that detect components past their vendor
