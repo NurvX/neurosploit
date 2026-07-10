@@ -245,6 +245,19 @@ impl ChatClient {
             } else {
                 "no output".to_string()
             };
+            // Agentic CLIs (esp. `codex exec` in bypass-sandbox mode) exit
+            // non-zero when a tool/command they ran internally returned non-zero
+            // (e.g. a curl/nmap that failed) — even though they produced a valid
+            // final answer. Treat that as success and use the output; only fail
+            // hard on a genuine auth/rate/quota error or when there's no output.
+            let low = format!("{stdout}\n{stderr}").to_lowercase();
+            let hard = ["not logged in", "please log in", "please login", "run /login",
+                "unauthorized", "not authenticated", "invalid api key", "no api key",
+                "rate limit", "429", "quota", "credit balance", "usage limit"]
+                .iter().any(|k| low.contains(k));
+            if !stdout.is_empty() && !hard {
+                return Ok(stdout);
+            }
             return Err(anyhow!(
                 "{} subscription CLI exit {}: {}",
                 bin,
