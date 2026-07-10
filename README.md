@@ -1,4 +1,4 @@
-<h1 align="center">🧠 NeuroSploit v3.6.0</h1>
+<h1 align="center">🧠 NeuroSploit v3.6.1</h1>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/22624?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-22624" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/22624/daily?language=Python" alt="JoasASantos%2FNeuroSploit | Trendshift" width="250" height="55"/></a>
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-3.6.0-blue?style=flat-square">
+  <img src="https://img.shields.io/badge/Version-3.6.1-blue?style=flat-square">
   <img src="https://img.shields.io/badge/Harness-Rust%20%7C%20tokio-e6b673?style=flat-square">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
   <img src="https://img.shields.io/badge/MD%20Agents-417-red?style=flat-square">
@@ -28,7 +28,7 @@
 >
 > 📖 **New here? Read the [full Tutorial & User Guide →](TUTORIAL.md)** — every mode, flag, config and example explained.
 
-> 🆕 **New in v3.6.0 — Cloud testing + REPL navigation + deeper recon:**
+> 🆕 **New in v3.6.1 — Cloud testing + REPL navigation + deeper recon:**
 > **AWS/GCP/Azure** agents (+17 → **375** total) with credentials wired through
 > `creds.yaml`; a more navigable **REPL** — **`/timeout`** idle guardrail,
 > **multi-target** `/target a,b,c` (sequential), an interactive **`/results`**

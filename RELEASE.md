@@ -1,3 +1,23 @@
+# NeuroSploit v3.6.1 — Release Notes
+
+**Release Date:** July 2026
+**Codename:** GPT-5.6 models
+**License:** MIT
+**Credits:** Joas A Santos & Red Team Leaders
+
+---
+
+## Highlights
+
+- **Added the GPT-5.6 model line** (OpenAI / ChatGPT): `openai:gpt-5.6-sol`
+  (frontier / default), `openai:gpt-5.6-terra` (balanced), and
+  `openai:gpt-5.6-luna` (fast & affordable) — alongside the existing GPT-5.x,
+  Claude (incl. Sonnet 5), Grok 4.5 and the rest of the provider pool.
+- Everything from v3.6.0 (AI/LLM/MCP/Skills testing, n8n audit, onboarding
+  wizard, intense multi-round recon) carries forward unchanged.
+
+---
+
 # NeuroSploit v3.6.0 — Release Notes
 
 **Release Date:** July 2026

@@ -1,4 +1,4 @@
-//! Deterministic HTTP request/response analysis (v3.6.0).
+//! Deterministic HTTP request/response analysis (v3.6.1).
 //!
 //! Before the LLM recon runs, the harness performs a **real** probe of the
 //! target and captures observed facts — status, headers, security headers,

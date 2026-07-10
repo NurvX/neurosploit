@@ -25,7 +25,7 @@ pub fn providers() -> Vec<Provider> {
         Provider { key: "anthropic", label: "Anthropic Claude", base_url: "https://api.anthropic.com/v1", env_key: "ANTHROPIC_API_KEY", kind: "cli",
             models: vec!["claude-opus-4-8", "claude-sonnet-5", "claude-sonnet-4-6", "claude-haiku-4-5"] },
         Provider { key: "openai", label: "OpenAI (ChatGPT)", base_url: "https://api.openai.com/v1", env_key: "OPENAI_API_KEY", kind: "cli",
-            models: vec!["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2", "gpt-5.1", "gpt-5.1-codex", "o4"] },
+            models: vec!["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2", "gpt-5.1", "gpt-5.1-codex", "o4"] },
         Provider { key: "xai", label: "xAI Grok", base_url: "https://api.x.ai/v1", env_key: "XAI_API_KEY", kind: "cli",
             models: vec!["grok-4.5", "grok-4", "grok-4-fast"] },
         Provider { key: "gemini", label: "Google Gemini", base_url: "https://generativelanguage.googleapis.com/v1beta/openai", env_key: "GEMINI_API_KEY", kind: "cli",
