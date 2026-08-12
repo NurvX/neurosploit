@@ -1,4 +1,4 @@
-//! NeuroSploit v3.6.8 — interactive harness + CLI (`run` / `whitebox` / `agents` / `models`).
+//! NeuroSploit v3.6.9 — interactive harness + CLI (`run` / `whitebox` / `agents` / `models`).
 
 mod repl;
 mod tui;
@@ -11,9 +11,9 @@ use std::path::{Path, PathBuf};
 #[command(
     name = "neurosploit",
     version,
-    about = "NeuroSploit v3.6.8 — multi-model autonomous pentest harness",
-    long_about = "NeuroSploit v3.6.8 — a Rust multi-model harness that drives a pool of LLMs \
-(API key or local subscription: Claude/Codex/Gemini/Grok) to autonomously test a target. \
+    about = "NeuroSploit v3.6.9 — multi-model autonomous pentest harness",
+    long_about = "NeuroSploit v3.6.9 — a Rust multi-model harness that drives a pool of LLMs \
+(API key or local subscription: Claude/Codex/Gemini/Grok/OpenCode/Hermes) to autonomously test a target. \
 After recon it INTELLIGENTLY selects only the agents matching the discovered surface, runs \
 them in parallel, then validates every finding by cross-model voting before reporting.\n\n\
 Run with NO arguments for an interactive wizard.\n\n\
@@ -54,7 +54,7 @@ enum Cmd {
         recon: usize,
         #[arg(long)]
         offline: bool,
-        /// Use local agentic CLI subscription (Claude/Codex/Gemini/Grok login).
+        /// Use local agentic CLI subscription (Claude/Codex/Gemini/Grok/OpenCode/Hermes login).
         #[arg(long)]
         subscription: bool,
         /// Enable Playwright MCP (auto-installed if missing; backends that don't
@@ -765,7 +765,7 @@ pub(crate) fn spawn_engagement(base: &Path, mut cfg: RunConfig, mcp: bool, mode:
     println!("  │  ua     : {ua}");
     write_status(&workdir, "running", &format!("\"target\":{:?}", cfg.target));
 
-    println!("  ┌─ NeuroSploit v3.6.8  ·  by Joas A Santos & Red Team Leaders");
+    println!("  ┌─ NeuroSploit v3.6.9  ·  by Joas A Santos & Red Team Leaders");
     println!("  │  run id : {run_id}");
     println!("  │  target : {}", cfg.target);
     println!("  │  models : {}", cfg.models.join(", "));

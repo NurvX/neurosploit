@@ -52,6 +52,21 @@ pub fn providers() -> Vec<Provider> {
             models: vec!["gpt-4o", "claude-3-7-sonnet", "gemini/gemini-2.5-pro"] },
         Provider { key: "openrouter", label: "OpenRouter", base_url: "https://openrouter.ai/api/v1", env_key: "OPENROUTER_API_KEY", kind: "api",
             models: vec!["anthropic/claude-opus-4-8", "qwen/qwen-2.5-coder-32b-instruct", "deepseek/deepseek-r1", "meta-llama/llama-3.3-70b-instruct"] },
+        // OpenCode Zen — the curated OpenAI-compatible gateway behind the
+        // `opencode` CLI (https://opencode.ai/zen). Works two ways, like
+        // anthropic/openai/xai/gemini above: as a plain API-key provider here,
+        // or (with --subscription) driven through the locally-installed
+        // `opencode` agentic CLI on the user's own Zen/plan login — no key
+        // needed in that mode. `kind: "cli"` reflects the latter.
+        Provider { key: "opencode", label: "OpenCode Zen", base_url: "https://opencode.ai/zen/v1", env_key: "OPENCODE_API_KEY", kind: "cli",
+            models: vec!["claude-opus-5", "claude-sonnet-5", "gpt-5.6-sol", "gpt-5.5", "gemini-3-pro", "grok-4.5", "deepseek-v4-pro", "qwen3.7-max", "kimi-k3"] },
+        // Nous Research — Hermes models via the Nous Portal. As an API-key
+        // provider here (OpenAI-compatible `inference-api.nousresearch.com`),
+        // or (with --subscription) driven through the `hermes` CLI
+        // (NousResearch/hermes-agent) on the user's OAuth Portal login
+        // (`hermes setup --portal`) — 300+ routed frontier models, no key.
+        Provider { key: "nous", label: "Nous Research (Hermes)", base_url: "https://inference-api.nousresearch.com/v1", env_key: "NOUS_API_KEY", kind: "cli",
+            models: vec!["Hermes-4-405B", "Hermes-4-70B", "DeepHermes-3-Mistral-24B-Preview"] },
         // Azure OpenAI (OpenAI-compatible). Set AZURE_OPENAI_ENDPOINT (e.g.
         // https://<resource>.openai.azure.com), optionally AZURE_OPENAI_API_VERSION
         // (default 2024-10-21), and use `azure:<your-deployment-name>` as the model.
@@ -226,6 +241,11 @@ impl ChatClient {
         }
 
         let mut cmd = Command::new(bin);
+        // Most agentic CLIs here take the prompt on stdin; opencode and hermes
+        // take it as a trailing positional argument instead — track which so we
+        // don't also pipe it into stdin below (that would just hang the child
+        // waiting on a request it already got as an argv value).
+        let mut prompt_via_stdin = true;
         match bin {
             // Codex non-interactive exec (uses the ChatGPT/Codex login), prompt on stdin.
             "codex" => {
@@ -250,13 +270,46 @@ impl ChatClient {
             "grok" => {
                 cmd.arg("--model").arg(model);
             }
+            // OpenCode CLI (`opencode run`) — non-interactive one-shot, prompt
+            // as a positional arg, not stdin. `--auto` auto-approves anything
+            // not explicitly denied (our equivalent of --dangerously-skip-permissions).
+            // MCP (Playwright) is injected via a generated opencode.json pointed
+            // at through OPENCODE_CONFIG rather than a CLI flag (opencode has none).
+            "opencode" => {
+                prompt_via_stdin = false;
+                cmd.arg("run").arg("--model").arg(model).arg("--auto");
+                if let Some(mcp) = mcp_config {
+                    match write_opencode_mcp_config(mcp) {
+                        Ok(cfg) => { cmd.env("OPENCODE_CONFIG", cfg); }
+                        Err(e) => eprintln!("  [!] opencode MCP config failed: {e}"),
+                    }
+                }
+                cmd.arg(&prompt);
+            }
+            // Hermes Agent CLI (NousResearch/hermes-agent) — single-query mode.
+            // `-q` is the prompt-supplying flag (not a stdin read); `--provider
+            // nous` pins the Nous Portal OAuth login; `-Q` quiets banner/spinner
+            // for programmatic use; `--yolo` bypasses dangerous-command prompts.
+            // No CLI-level MCP hook — Hermes falls back to its own built-in
+            // toolsets (web/terminal/computer-use) rather than our Playwright MCP.
+            "hermes" => {
+                prompt_via_stdin = false;
+                cmd.arg("chat").arg("-m").arg(model).arg("--provider").arg("nous")
+                    .arg("-Q").arg("--yolo").arg("-q").arg(&prompt);
+            }
             _ => {}
         }
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
         let mut child = cmd.spawn().map_err(|e| anyhow!("spawn {} failed: {}", bin, e))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await?;
-            // Drop closes stdin so the CLI processes the prompt and exits.
+        if prompt_via_stdin {
+            if let Some(mut stdin) = child.stdin.take() {
+                stdin.write_all(prompt.as_bytes()).await?;
+                // Drop closes stdin so the CLI processes the prompt and exits.
+            }
+        } else {
+            // Prompt went in as an argv value; close stdin immediately so
+            // nothing lingers waiting on it (opencode/hermes never read it).
+            drop(child.stdin.take());
         }
         // Cap a single agentic CLI turn so a stuck tool-loop can't hang the run.
         let out = match tokio::time::timeout(Duration::from_secs(600), child.wait_with_output()).await {
@@ -577,6 +630,8 @@ pub fn cli_binary_for(provider: &str) -> Option<&'static str> {
         "openai" => Some("codex"),
         "xai" => Some("grok"),
         "gemini" => Some("gemini"),
+        "opencode" => Some("opencode"),
+        "nous" => Some("hermes"),
         _ => None,
     }
 }
@@ -590,7 +645,7 @@ pub fn binary_in_path(name: &str) -> bool {
 
 /// Which subscription CLI backends are installed locally.
 pub fn installed_cli_backends() -> Vec<&'static str> {
-    ["claude", "codex", "grok", "gemini"].into_iter().filter(|b| binary_in_path(b)).collect()
+    ["claude", "codex", "grok", "gemini", "opencode", "hermes"].into_iter().filter(|b| binary_in_path(b)).collect()
 }
 
 /// Login state of a subscription CLI backend.
@@ -610,15 +665,23 @@ pub async fn cli_login_status(provider: &str) -> LoginStatus {
     let Some(bin) = cli_binary_for(provider) else { return LoginStatus::NotInstalled };
     if !binary_in_path(bin) { return LoginStatus::NotInstalled; }
     let mut cmd = Command::new(bin);
+    // opencode/hermes take the probe prompt as an argv value, not stdin.
+    let prompt_via_stdin = !matches!(bin, "opencode" | "hermes");
     match bin {
         "claude" => { cmd.arg("-p").arg("--output-format").arg("text").arg("--dangerously-skip-permissions"); }
         "codex" => { cmd.arg("exec").arg("--dangerously-bypass-approvals-and-sandbox").arg("-"); }
+        "opencode" => { cmd.arg("run").arg("--auto").arg("Reply with exactly: OK"); }
+        "hermes" => { cmd.arg("chat").arg("--provider").arg("nous").arg("-Q").arg("--yolo").arg("-q").arg("Reply with exactly: OK"); }
         _ => { cmd.arg("-p"); } // grok / gemini: prompt on stdin
     }
     cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true);
     let mut child = match cmd.spawn() { Ok(c) => c, Err(_) => return LoginStatus::Unknown };
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(b"Reply with exactly: OK").await;
+    if prompt_via_stdin {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(b"Reply with exactly: OK").await;
+        }
+    } else {
+        drop(child.stdin.take());
     }
     let out = match tokio::time::timeout(Duration::from_secs(45), child.wait_with_output()).await {
         Ok(Ok(o)) => o,
@@ -642,10 +705,50 @@ pub async fn cli_login_status(provider: &str) -> LoginStatus {
 }
 
 /// Does this provider's agentic CLI accept a Playwright MCP config?
-/// Claude Code and Codex do; Gemini/Grok CLIs don't take an MCP-config flag, so
-/// they fall back to their own built-in tools.
+/// Claude Code, Codex, and OpenCode do (OpenCode via a generated
+/// `opencode.json` + `OPENCODE_CONFIG`, see `write_opencode_mcp_config`).
+/// Gemini/Grok/Hermes have no CLI-level MCP hook, so they fall back to their
+/// own built-in tools (Hermes ships web/terminal/computer-use natively).
 pub fn mcp_supported(provider: &str) -> bool {
-    matches!(provider, "anthropic" | "openai")
+    matches!(provider, "anthropic" | "openai" | "opencode")
+}
+
+/// Convert our `.mcp.json` (`{"mcpServers": {name: {command, args}}}`) into
+/// OpenCode's own config schema (`{"mcp": {name: {"type":"local","command":
+/// [command, ...args], "enabled": true}}}`) and write it next to the source
+/// file. OpenCode has no `--mcp-config` flag; it's pointed at a config file
+/// via the `OPENCODE_CONFIG` env var instead (set by the `opencode` arm of
+/// `chat_cli`), so this doesn't touch the user's own `opencode.json`.
+fn write_opencode_mcp_config(mcp_json_path: &str) -> Result<std::path::PathBuf> {
+    let txt = std::fs::read_to_string(mcp_json_path)
+        .map_err(|e| anyhow!("read {mcp_json_path}: {e}"))?;
+    let v: serde_json::Value = serde_json::from_str(&txt)
+        .map_err(|e| anyhow!("parse {mcp_json_path}: {e}"))?;
+    let servers = v.get("mcpServers").cloned().unwrap_or(v);
+    let mut mcp = serde_json::Map::new();
+    if let Some(obj) = servers.as_object() {
+        for (name, s) in obj {
+            let command = s.get("command").and_then(|c| c.as_str()).unwrap_or("").to_string();
+            if command.is_empty() { continue; }
+            let mut argv = vec![serde_json::Value::String(command)];
+            if let Some(args) = s.get("args").and_then(|a| a.as_array()) {
+                argv.extend(args.iter().cloned());
+            }
+            mcp.insert(name.clone(), serde_json::json!({
+                "type": "local",
+                "command": argv,
+                "enabled": true
+            }));
+        }
+    }
+    let cfg = serde_json::json!({
+        "$schema": "https://opencode.ai/config.json",
+        "mcp": mcp
+    });
+    let path = std::path::Path::new(mcp_json_path).with_file_name("opencode.json");
+    std::fs::write(&path, serde_json::to_string_pretty(&cfg).unwrap_or_default())
+        .map_err(|e| anyhow!("write {}: {e}", path.display()))?;
+    Ok(path)
 }
 
 /// Best-effort ensure the Playwright MCP server is available locally. Requires
