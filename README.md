@@ -1,4 +1,4 @@
-<h1 align="center">🧠 NeuroSploit v3.6.8</h1>
+<h1 align="center">🧠 NeuroSploit v3.6.9</h1>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/22624?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-22624" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/22624/daily?language=Python" alt="JoasASantos%2FNeuroSploit | Trendshift" width="250" height="55"/></a>
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-3.6.8-blue?style=flat-square">
+  <img src="https://img.shields.io/badge/Version-3.6.9-blue?style=flat-square">
   <img src="https://img.shields.io/badge/Harness-Rust%20%7C%20tokio-e6b673?style=flat-square">
   <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square">
   <img src="https://img.shields.io/badge/MD%20Agents-435-red?style=flat-square">
@@ -433,6 +433,8 @@ export GROQ_API_KEY=...                    # groq:*
 export TOGETHER_API_KEY=...                # together:*
 export MOONSHOT_API_KEY=...                # moonshot:*  (Kimi K3/K2)
 export OPENROUTER_API_KEY=...              # openrouter:*
+export OPENCODE_API_KEY=...                # opencode:*  (OpenCode Zen gateway)
+export NOUS_API_KEY=...                    # nous:*  (Nous Portal — Hermes)
 # ollama / llamacpp need no key (local)
 
 # then run via API (note: NO --subscription)
@@ -462,6 +464,8 @@ Or put the keys in a `.env` and source it (`cp .env.example .env`; edit; `set -a
 | `together:` | `TOGETHER_API_KEY` | api.together.xyz |
 | `moonshot:` | `MOONSHOT_API_KEY` | api.moonshot.ai |
 | `openrouter:` | `OPENROUTER_API_KEY` | openrouter.ai |
+| `opencode:` | `OPENCODE_API_KEY` | opencode.ai/zen (OpenCode Zen gateway) |
+| `nous:` | `NOUS_API_KEY` | inference-api.nousresearch.com (Hermes 4) |
 | `ollama:` | _(none)_ | localhost:11434 |
 | `llamacpp:` | _(none)_ | localhost:8080 |
 
@@ -484,6 +488,12 @@ install and log into one of the CLIs first:
 | `openai:` | `codex` | `codex` login |
 | `gemini:` | `gemini` | `gemini` login |
 | `xai:` | `grok` | `grok` login |
+| `opencode:` | `opencode` | `opencode auth login` (or `/connect` in the TUI) — Zen/plan account |
+| `nous:` | `hermes` | `hermes setup --portal` — Nous Portal OAuth |
+
+`opencode:` also gets the Playwright MCP (`--mcp`) like anthropic/openai do.
+`nous:` relies on Hermes's own built-in toolsets (web/terminal/computer-use)
+instead — it has no CLI-level MCP hook.
 
 ```bash
 ./target/release/neurosploit run http://testphp.vulnweb.com/ \
